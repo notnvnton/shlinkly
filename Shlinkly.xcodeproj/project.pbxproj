@@ -6,6 +6,10 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		5DB943AD2FDA0E87000E5E11 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5DB943AC2FDA0E87000E5E11 /* ShlinklyCore */; };
+/* End PBXBuildFile section */
+
 /* Begin PBXFileReference section */
 		5D3060762FDA043400B01249 /* Shlinkly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shlinkly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -23,6 +27,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5DB943AD2FDA0E87000E5E11 /* ShlinklyCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +70,7 @@
 			);
 			name = Shlinkly;
 			packageProductDependencies = (
+				5DB943AC2FDA0E87000E5E11 /* ShlinklyCore */,
 			);
 			productName = Shlinkly;
 			productReference = 5D3060762FDA043400B01249 /* Shlinkly.app */;
@@ -94,6 +100,9 @@
 			);
 			mainGroup = 5D30606D2FDA043400B01249;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5DB943AB2FDA0E87000E5E11 /* XCLocalSwiftPackageReference "ShlinklyCore" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 5D3060772FDA043400B01249 /* Products */;
 			projectDirPath = "";
@@ -345,6 +354,20 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5DB943AB2FDA0E87000E5E11 /* XCLocalSwiftPackageReference "ShlinklyCore" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ShlinklyCore;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5DB943AC2FDA0E87000E5E11 /* ShlinklyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = ShlinklyCore;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 5D30606E2FDA043400B01249 /* Project object */;
 }
