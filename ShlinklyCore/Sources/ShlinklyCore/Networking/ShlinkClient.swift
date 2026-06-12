@@ -87,6 +87,101 @@ public actor ShlinkClient {
         let shortUrls: Pagination<ShortURL>
     }
 
+    /// Fetches a single page of visits for one short URL.
+    ///
+    /// Parameter names mirror the `GET /short-urls/{shortCode}/visits` query
+    /// parameters in the Shlink REST API OpenAPI spec
+    /// (`getShortUrlVisits`), verified against the spec rather than assumed:
+    /// `startDate`/`endDate` are ISO-8601 strings, `excludeBots` is the literal
+    /// string `"true"` (its only accepted value), and `domain` selects a
+    /// non-default domain.
+    ///
+    /// - Parameters:
+    ///   - shortCode: The short code whose visits to fetch.
+    ///   - domain: The owning domain, or `nil` for the default domain.
+    ///   - startDate: Lower bound on visit time. `nil` means no lower bound.
+    ///   - endDate: Upper bound on visit time. `nil` means no upper bound.
+    ///   - excludeBots: When `true`, the server drops bot visits. Layer 2a keeps
+    ///     this `false` and filters bots client-side, but the parameter is
+    ///     surfaced for completeness.
+    ///   - page: 1-based page number.
+    ///   - itemsPerPage: Page size.
+    public func shortURLVisits(
+        shortCode: String,
+        domain: String? = nil,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
+        excludeBots: Bool = false,
+        page: Int = 1,
+        itemsPerPage: Int = 200
+    ) async throws -> Pagination<Visit> {
+        var queryItems = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "itemsPerPage", value: String(itemsPerPage)),
+        ]
+        if let domain {
+            queryItems.append(URLQueryItem(name: "domain", value: domain))
+        }
+        if let startDate {
+            queryItems.append(URLQueryItem(name: "startDate", value: ISO8601DateParser.string(from: startDate)))
+        }
+        if let endDate {
+            queryItems.append(URLQueryItem(name: "endDate", value: ISO8601DateParser.string(from: endDate)))
+        }
+        // The spec only accepts the literal "true"; omit the param otherwise.
+        if excludeBots {
+            queryItems.append(URLQueryItem(name: "excludeBots", value: "true"))
+        }
+
+        let request = try makeRequest(path: "short-urls/\(shortCode)/visits", queryItems: queryItems)
+        // Shlink nests the paginated payload under a `visits` key.
+        let wrapper: VisitsResponse = try await send(request)
+        return wrapper.visits
+    }
+
+    /// Loads *every* visit for a short URL within the given window by walking the
+    /// paginated endpoint to the end.
+    ///
+    /// The detail store needs the full set in memory to compute period metrics
+    /// and to bin visits per day, so this collapses pagination into one array.
+    /// Cooperatively cancellable: it checks for cancellation before each page so
+    /// a superseded load stops promptly.
+    public func allShortURLVisits(
+        shortCode: String,
+        domain: String? = nil,
+        startDate: Date? = nil,
+        endDate: Date? = nil,
+        excludeBots: Bool = false
+    ) async throws -> [Visit] {
+        let pageSize = 200
+        var all: [Visit] = []
+        var page = 1
+        while true {
+            try Task.checkCancellation()
+            let result = try await shortURLVisits(
+                shortCode: shortCode,
+                domain: domain,
+                startDate: startDate,
+                endDate: endDate,
+                excludeBots: excludeBots,
+                page: page,
+                itemsPerPage: pageSize
+            )
+            all.append(contentsOf: result.data)
+            // Stop at the last page (or immediately when the window is empty).
+            if result.data.isEmpty || result.pagination.currentPage >= result.pagination.pagesCount {
+                break
+            }
+            page += 1
+        }
+        return all
+    }
+
+    /// Decodes the outer envelope that Shlink wraps visit lists in.
+    private struct VisitsResponse: Decodable {
+        let visits: Pagination<Visit>
+    }
+
     // MARK: - Request building & transport
 
     /// Builds a request against `baseURL` with the standard Shlink headers.
@@ -189,5 +284,14 @@ enum ISO8601DateParser {
 
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.date(from: string)
+    }
+
+    /// Renders a date as an ISO-8601 internet timestamp (e.g.
+    /// `2026-06-12T00:00:00Z`), the form Shlink's `startDate`/`endDate` filters
+    /// accept.
+    static func string(from date: Date) -> String {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter.string(from: date)
     }
 }
