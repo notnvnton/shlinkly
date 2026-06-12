@@ -87,6 +87,64 @@ public actor ShlinkClient {
         let shortUrls: Pagination<ShortURL>
     }
 
+    /// Fetches one page of tag names.
+    ///
+    /// Mirrors `GET /tags` from the canonical OpenAPI spec (verified against
+    /// `shlinkio/shlink` `docs/swagger`, not assumed): the payload is
+    /// `{ "tags": { "data": [String], "pagination": {…} } }` — `data` is a flat
+    /// array of tag-name strings. Without `withStats` there are no per-tag
+    /// objects, which is all the list/sidebar suggestions need.
+    ///
+    /// - Parameters:
+    ///   - page: 1-based page number.
+    ///   - itemsPerPage: Page size. The server returns *all* tags when omitted,
+    ///     but we page explicitly so a large tag set can't arrive in one giant
+    ///     response.
+    ///   - searchTerm: Optional substring filter on the tag name. Empty/`nil`
+    ///     means no filter.
+    public func tags(
+        page: Int = 1,
+        itemsPerPage: Int = 200,
+        searchTerm: String? = nil
+    ) async throws -> Pagination<String> {
+        var queryItems = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "itemsPerPage", value: String(itemsPerPage)),
+        ]
+        if let searchTerm, !searchTerm.isEmpty {
+            queryItems.append(URLQueryItem(name: "searchTerm", value: searchTerm))
+        }
+
+        let request = try makeRequest(path: "tags", queryItems: queryItems)
+        // Shlink nests the paginated payload under a `tags` key.
+        let wrapper: TagsResponse = try await send(request)
+        return wrapper.tags
+    }
+
+    /// Loads *every* tag name by walking the paginated `/tags` endpoint to the
+    /// end. Cooperatively cancellable — it checks before each page so a
+    /// superseded load stops promptly.
+    public func allTags() async throws -> [String] {
+        let pageSize = 200
+        var all: [String] = []
+        var page = 1
+        while true {
+            try Task.checkCancellation()
+            let result = try await tags(page: page, itemsPerPage: pageSize)
+            all.append(contentsOf: result.data)
+            if result.data.isEmpty || result.pagination.currentPage >= result.pagination.pagesCount {
+                break
+            }
+            page += 1
+        }
+        return all
+    }
+
+    /// Decodes the outer envelope that Shlink wraps tag lists in.
+    private struct TagsResponse: Decodable {
+        let tags: Pagination<String>
+    }
+
     /// Fetches a single page of visits for one short URL.
     ///
     /// Parameter names mirror the `GET /short-urls/{shortCode}/visits` query
