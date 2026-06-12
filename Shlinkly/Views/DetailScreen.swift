@@ -23,8 +23,14 @@ struct DetailScreen: View {
     @State private var copyResetTask: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
 
-    init(shortURL: ShortURL, client: ShlinkClient) {
+    /// Applies a tag as the shared list filter and returns to the list. Wired
+    /// upstream so it can both set the filter and drive navigation (iOS pops,
+    /// macOS clears the detail selection).
+    private let onSelectTag: (String) -> Void
+
+    init(shortURL: ShortURL, client: ShlinkClient, onSelectTag: @escaping (String) -> Void) {
         _store = State(initialValue: ShortURLDetailStore(shortURL: shortURL, client: client))
+        self.onSelectTag = onSelectTag
     }
 
     private var shortURL: ShortURL { store.shortURL }
@@ -37,7 +43,7 @@ struct DetailScreen: View {
                     LinkPreviewView(url: destinationURL)
                 }
                 if !shortURL.tags.isEmpty {
-                    TagChipsView(tags: shortURL.tags)
+                    TagChipsView(tags: shortURL.tags, onSelectTag: onSelectTag)
                 }
                 periodPicker
                 metricCards
@@ -326,15 +332,17 @@ private struct MetricCard: View {
 
 // MARK: - Tag chips
 
-/// Static, wrapping tag chips built from the shared ``TagChip`` style.
-/// Tappable filtering arrives in layer 2b.2.
+/// Wrapping, tappable tag chips built from the shared ``TagChip`` style. Detail
+/// shows every tag (no "+N" overflow); tapping one filters the list and returns
+/// to it via ``onSelectTag``.
 private struct TagChipsView: View {
     let tags: [String]
+    let onSelectTag: (String) -> Void
 
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
-                TagChip(text: tag)
+                TagChip(text: tag) { onSelectTag(tag) }
             }
         }
     }
