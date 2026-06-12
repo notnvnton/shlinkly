@@ -227,8 +227,24 @@ public final class ShortURLDetailStore {
     /// Per-day visit counts across ``window(for:now:)``, with empty days
     /// zero-filled so the chart's axis stays continuous. Honours the bot toggle.
     public var dailyCounts: [DailyCount] {
+        dailyCounts(excludingBots: excludeBots)
+    }
+
+    /// Upper bound for the chart's Y axis: the "nice" rounded peak of the full
+    /// (bot-inclusive) daily counts for the current period.
+    ///
+    /// Deliberately independent of the bot toggle so excluding bots only
+    /// shortens the bars — the axis stays put. It *is* recomputed per period,
+    /// since each period has its own peak.
+    public var chartYDomainMax: Int {
+        let peak = dailyCounts(excludingBots: false).map(\.count).max() ?? 0
+        return Self.niceCeiling(peak)
+    }
+
+    /// Per-day counts over the current window, optionally dropping bots.
+    private func dailyCounts(excludingBots: Bool) -> [DailyCount] {
         let (start, end) = window(for: period, now: Date())
-        let filtered = excludeBots ? visits.filter { !$0.potentialBot } : visits
+        let filtered = excludingBots ? visits.filter { !$0.potentialBot } : visits
 
         // Tally the (possibly filtered) visits into day buckets.
         var counts: [Date: Int] = [:]
@@ -245,5 +261,20 @@ public final class ShortURLDetailStore {
             cursor = next
         }
         return result
+    }
+
+    /// Rounds `value` up to a "nice" axis maximum (1, 2 or 5 × 10ⁿ); never
+    /// below 1 so the domain is always non-degenerate.
+    static func niceCeiling(_ value: Int) -> Int {
+        guard value > 1 else { return 1 }
+        let v = Double(value)
+        let magnitude = pow(10, floor(log10(v)))
+        let normalized = v / magnitude
+        let nice: Double
+        if normalized <= 1 { nice = 1 }
+        else if normalized <= 2 { nice = 2 }
+        else if normalized <= 5 { nice = 5 }
+        else { nice = 10 }
+        return Int((nice * magnitude).rounded())
     }
 }
