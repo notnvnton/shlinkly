@@ -14,9 +14,22 @@
 		5D3060762FDA043400B01249 /* Shlinkly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shlinkly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5DDEC0DE2FDA0E87000E5E11 /* Exceptions for "Shlinkly" folder in "Shlinkly" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				DevConfig.example.swift,
+			);
+			target = 5D3060752FDA043400B01249 /* Shlinkly */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5D3060782FDA043400B01249 /* Shlinkly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5DDEC0DE2FDA0E87000E5E11 /* Exceptions for "Shlinkly" folder in "Shlinkly" target */,
+			);
 			path = Shlinkly;
 			sourceTree = "<group>";
 		};
