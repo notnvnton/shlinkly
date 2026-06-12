@@ -89,7 +89,16 @@ private struct LinkMetadataView: UIViewRepresentable {
     let metadata: LPLinkMetadata
 
     func makeUIView(context: Context) -> LPLinkView {
-        LPLinkView(metadata: metadata)
+        let view = LPLinkView(metadata: metadata)
+        // LPLinkView installs its own tap and drag-to-share gesture
+        // recognizers. Inside a SwiftUI ScrollView those win the pan, so a
+        // drag that begins on the preview never scrolls the page (programmatic
+        // scrolling still works — which is what made this look fixed before).
+        // The preview is decorative here — the header carries a dedicated
+        // "Open in browser" button — so make it non-interactive and let touches
+        // fall through to the scroll view.
+        view.isUserInteractionEnabled = false
+        return view
     }
 
     func updateUIView(_ view: LPLinkView, context: Context) {

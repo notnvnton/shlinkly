@@ -30,6 +30,9 @@ struct VisitsBarChart: View {
         .chartYAxis {
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4))
         }
+        // Purely a display chart — no selection or tap. Opt out of hit testing
+        // so it can never capture the enclosing ScrollView's pan gesture.
+        .allowsHitTesting(false)
         .accessibilityLabel("Visits by day")
     }
 }
