@@ -14,6 +14,8 @@ struct ShortURLListScreen: View {
     /// The list store is owned upstream (in `RootView`) so the detail screen can
     /// share its filter state. This screen only reads and drives it.
     private let store: ShortURLListStore
+    /// Shared tag cache, used for the iPhone search suggestions.
+    private let tagsStore: TagsStore
     @State private var didInitialLoad = false
 
     #if os(macOS)
@@ -21,13 +23,15 @@ struct ShortURLListScreen: View {
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
 
-    init(store: ShortURLListStore, selection: Binding<Route?>) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, selection: Binding<Route?>) {
         self.store = store
+        self.tagsStore = tagsStore
         _selection = selection
     }
     #else
-    init(store: ShortURLListStore) {
+    init(store: ShortURLListStore, tagsStore: TagsStore) {
         self.store = store
+        self.tagsStore = tagsStore
     }
     #endif
 
@@ -41,11 +45,20 @@ struct ShortURLListScreen: View {
         .navigationTitle("Links")
         .toolbar { sortToolbar }
         .searchable(text: searchBinding, prompt: Text("Search links"))
+        .tagSearchSuggestions(tagSuggestions) { store.applyTagFromSearch($0) }
         .task {
+            tagsStore.loadIfNeeded()
             guard !didInitialLoad else { return }
             didInitialLoad = true
             store.loadFirstPage()
         }
+    }
+
+    /// Tags matching the current search text, surfaced as suggestions while the
+    /// user types (iPhone). Empty while not searching, so the URL/code results
+    /// show normally.
+    private var tagSuggestions: [String] {
+        tagsStore.suggestions(for: store.searchTerm)
     }
 
     // MARK: - State routing
@@ -219,6 +232,47 @@ struct ShortURLListScreen: View {
         }
     }
 }
+
+// MARK: - Tag search suggestions (iPhone)
+
+private extension View {
+    /// Attaches native tag search suggestions on iOS; a no-op on macOS, where the
+    /// sidebar already lists every tag. Tapping a suggestion runs `onSelect`.
+    @ViewBuilder
+    func tagSearchSuggestions(
+        _ tags: [String],
+        onSelect: @escaping (String) -> Void
+    ) -> some View {
+        #if os(iOS)
+        self.searchSuggestions {
+            ForEach(tags, id: \.self) { tag in
+                TagSuggestionRow(tag: tag, onSelect: onSelect)
+            }
+        }
+        #else
+        self
+        #endif
+    }
+}
+
+#if os(iOS)
+/// One tappable tag suggestion. Lives inside the searchable scope so it can read
+/// `dismissSearch` to close the search UI once a tag is chosen.
+private struct TagSuggestionRow: View {
+    let tag: String
+    let onSelect: (String) -> Void
+    @Environment(\.dismissSearch) private var dismissSearch
+
+    var body: some View {
+        Button {
+            onSelect(tag)
+            dismissSearch()
+        } label: {
+            Label(tag, systemImage: "tag")
+        }
+    }
+}
+#endif
 
 // MARK: - Row tags
 

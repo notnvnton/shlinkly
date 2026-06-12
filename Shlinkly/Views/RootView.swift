@@ -34,6 +34,9 @@ struct RootView: View {
 private struct ConfiguredRoot: View {
     let client: ShlinkClient
     @State private var listStore: ShortURLListStore
+    /// Shared, in-memory tag cache: feeds the macOS sidebar and the iPhone
+    /// search suggestions from one load.
+    @State private var tagsStore: TagsStore
 
     #if os(macOS)
     @State private var selection: Route?
@@ -44,14 +47,15 @@ private struct ConfiguredRoot: View {
     init(client: ShlinkClient) {
         self.client = client
         _listStore = State(initialValue: ShortURLListStore(client: client))
+        _tagsStore = State(initialValue: TagsStore(client: client))
     }
 
     var body: some View {
         #if os(macOS)
         NavigationSplitView {
-            SidebarPlaceholder()
+            TagSidebar(listStore: listStore, tagsStore: tagsStore)
         } content: {
-            ShortURLListScreen(store: listStore, selection: $selection)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, selection: $selection)
         } detail: {
             if let selection {
                 destination(selection)
@@ -61,7 +65,7 @@ private struct ConfiguredRoot: View {
         }
         #else
         NavigationStack(path: $path) {
-            ShortURLListScreen(store: listStore)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore)
                 .navigationDestination(for: Route.self) { route in
                     destination(route)
                 }
@@ -95,14 +99,58 @@ private struct ConfiguredRoot: View {
 }
 
 #if os(macOS)
-/// Sidebar stub — real server/section navigation arrives in a later layer.
-private struct SidebarPlaceholder: View {
+/// The macOS sidebar: "All Links" (clears the filter) above the full tag list.
+/// Selecting a row drives the *same* ``ShortURLListStore/activeTag`` the middle
+/// list and the detail chips use, so the whole window stays in sync — selecting
+/// a tag here filters the content column, and "All Links" resets it. The
+/// selection is bound straight to `activeTag` so a filter set elsewhere (a row
+/// chip, a detail tap) reflects back as the highlighted sidebar row.
+private struct TagSidebar: View {
+    let listStore: ShortURLListStore
+    let tagsStore: TagsStore
+
+    /// A concrete selection value per row. "All Links" gets its own case rather
+    /// than a `nil` tag — `List` treats a `nil` selection as "nothing selected",
+    /// so a `nil`-tagged row never fires the binding and can't be picked. The
+    /// enum sidesteps that: every row, including All Links, has a non-nil tag.
+    private enum Item: Hashable {
+        case allLinks
+        case tag(String)
+    }
+
     var body: some View {
-        List {
+        List(selection: selectionBinding) {
             Label("All Links", systemImage: "link")
+                .tag(Item.allLinks)
+
+            if !tagsStore.tags.isEmpty {
+                Section("Tags") {
+                    ForEach(tagsStore.tags, id: \.self) { tag in
+                        Label(tag, systemImage: "tag")
+                            .tag(Item.tag(tag))
+                    }
+                }
+            }
         }
         .navigationTitle("Shlinkly")
         .frame(minWidth: 200)
+        .task { tagsStore.loadIfNeeded() }
+    }
+
+    /// Bridges the single-selection binding and ``ShortURLListStore/activeTag``:
+    /// a `nil` filter shows "All Links" selected, picking a tag applies it, and
+    /// picking "All Links" clears it. Reading from `activeTag` means a filter set
+    /// elsewhere (a row chip, a detail tap) reflects back here as the highlight.
+    private var selectionBinding: Binding<Item?> {
+        Binding(
+            get: { listStore.activeTag.map(Item.tag) ?? .allLinks },
+            set: { item in
+                switch item {
+                case .tag(let tag): listStore.setActiveTag(tag)
+                case .allLinks, .none: listStore.setActiveTag(nil)
+                }
+            }
+        )
     }
 }
 
