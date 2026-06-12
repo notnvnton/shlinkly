@@ -15,9 +15,9 @@ public struct ShortURL: Codable, Sendable, Equatable {
     public let longUrl: String
     /// When the short URL was created (ISO 8601 with timezone).
     public let dateCreated: Date
-    /// Total recorded visits. Deprecated by Shlink in favour of `visitsSummary`,
-    /// but still emitted on the v3 API, so we keep it for now.
-    public let visitsCount: Int
+    /// Aggregated visit counts for the short URL. Shlink 5.x removed the former
+    /// scalar `visitsCount` in favour of this nested summary.
+    public let visitsSummary: VisitsSummary
     /// Human-readable title, resolved from the destination page. Nullable.
     public let title: String?
     /// Tags associated with the short URL. Always present, possibly empty.
@@ -55,7 +55,7 @@ public struct ShortURL: Codable, Sendable, Equatable {
         shortUrl: String,
         longUrl: String,
         dateCreated: Date,
-        visitsCount: Int = 0,
+        visitsSummary: VisitsSummary = VisitsSummary(),
         title: String? = nil,
         tags: [String] = [],
         domain: String? = nil,
@@ -67,7 +67,7 @@ public struct ShortURL: Codable, Sendable, Equatable {
         self.shortUrl = shortUrl
         self.longUrl = longUrl
         self.dateCreated = dateCreated
-        self.visitsCount = visitsCount
+        self.visitsSummary = visitsSummary
         self.title = title
         self.tags = tags
         self.domain = domain

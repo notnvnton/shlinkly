@@ -22,7 +22,10 @@ let package = Package(
         .target(
             name: "ShlinklyCore"
         ),
-
+        .testTarget(
+            name: "ShlinklyCoreTests",
+            dependencies: ["ShlinklyCore"]
+        ),
     ],
     swiftLanguageModes: [.v6]
 )
