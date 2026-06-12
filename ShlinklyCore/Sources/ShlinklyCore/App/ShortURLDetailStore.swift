@@ -137,7 +137,8 @@ public final class ShortURLDetailStore {
     // MARK: - Worker
 
     private func run(_ period: Period) async {
-        let startDate = startDate(for: period, now: Date())
+        // Clamp the request window to the creation date — no visits predate it.
+        let startDate = window(for: period, now: Date()).start
         do {
             // Always load the full set (bots included); the toggle filters locally.
             let loaded = try await client.allShortURLVisits(
@@ -156,12 +157,30 @@ public final class ShortURLDetailStore {
         }
     }
 
-    /// Start-of-day `dayCount - 1` days back, so e.g. "7 days" covers today plus
-    /// the six preceding days. `nil` for all time (no lower bound).
-    private func startDate(for period: Period, now: Date) -> Date? {
-        guard let days = period.dayCount else { return nil }
-        let startOfToday = calendar.startOfDay(for: now)
-        return calendar.date(byAdding: .day, value: -(days - 1), to: startOfToday)
+    /// The inclusive start-of-day window `[start, end]` that the chart spans and
+    /// the request is bounded to, clamped so it never reaches before the link
+    /// was created.
+    ///
+    /// - 7/30 days: `start` is `dayCount - 1` days before today (so "7 days"
+    ///   covers today plus the six preceding days), but no earlier than the
+    ///   creation day — which drops the empty left tail for young links.
+    /// - All time: `start` is the creation day.
+    ///
+    /// Because the windows clamp to the same floor they nest, so the period
+    /// totals order All ≥ 30 days ≥ 7 days; for a link younger than the period
+    /// all three windows coincide.
+    func window(for period: Period, now: Date) -> (start: Date, end: Date) {
+        let end = calendar.startOfDay(for: now)
+        let created = calendar.startOfDay(for: shortURL.dateCreated)
+        let start: Date
+        if let days = period.dayCount {
+            let naive = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
+            start = max(naive, created)
+        } else {
+            start = created
+        }
+        // A creation date in the future (clock skew) must not invert the window.
+        return (min(start, end), end)
     }
 
     // MARK: - Derived data
@@ -194,24 +213,22 @@ public final class ShortURLDetailStore {
         excludeBots ? "Visits by day · no bots" : "Visits by day · total"
     }
 
-    /// Per-day visit counts across the window, with empty days zero-filled so the
-    /// chart's axis stays continuous. Honours the bot toggle.
-    ///
-    /// For fixed windows the span is the requested `[startDate, today]`; for all
-    /// time it runs from the earliest loaded visit to today.
-    public var dailyCounts: [DailyCount] {
-        let now = Date()
-        let end = calendar.startOfDay(for: now)
-        let filtered = excludeBots ? visits.filter { !$0.potentialBot } : visits
-
-        let start: Date
-        if let from = startDate(for: period, now: now) {
-            start = calendar.startOfDay(for: from)
-        } else if let earliest = visits.map(\.date).min() {
-            start = calendar.startOfDay(for: earliest)
-        } else {
-            start = end
+    /// The window's date span formatted like the chart axis (e.g.
+    /// "Jun 7 – Jun 12"); collapses to a single date for a one-day window.
+    public var windowDateRange: String {
+        let (start, end) = window(for: period, now: Date())
+        let style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        if calendar.isDate(start, inSameDayAs: end) {
+            return start.formatted(style)
         }
+        return "\(start.formatted(style)) – \(end.formatted(style))"
+    }
+
+    /// Per-day visit counts across ``window(for:now:)``, with empty days
+    /// zero-filled so the chart's axis stays continuous. Honours the bot toggle.
+    public var dailyCounts: [DailyCount] {
+        let (start, end) = window(for: period, now: Date())
+        let filtered = excludeBots ? visits.filter { !$0.potentialBot } : visits
 
         // Tally the (possibly filtered) visits into day buckets.
         var counts: [Date: Int] = [:]
