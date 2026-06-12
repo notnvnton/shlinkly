@@ -42,17 +42,41 @@ public actor ShlinkClient {
     /// Fetches a page of short URLs. This is an authenticated call, so a
     /// successful response confirms the API key is valid.
     ///
+    /// Parameter names mirror the `GET /short-urls` query parameters in the
+    /// Shlink REST API OpenAPI spec (https://api-spec.shlink.io/), verified
+    /// against the spec rather than assumed.
+    ///
     /// - Parameters:
     ///   - page: 1-based page number.
     ///   - itemsPerPage: Page size.
-    public func shortURLs(page: Int = 1, itemsPerPage: Int = 20) async throws -> Pagination<ShortURL> {
-        let request = try makeRequest(
-            path: "short-urls",
-            queryItems: [
-                URLQueryItem(name: "page", value: String(page)),
-                URLQueryItem(name: "itemsPerPage", value: String(itemsPerPage)),
-            ]
-        )
+    ///   - searchTerm: Optional substring filter applied by the server across
+    ///     `longUrl` and `shortCode`. Empty/`nil` means no filter.
+    ///   - tags: Optional tag filter. Each tag is sent as a `tags[]` item; the
+    ///     server returns short URLs carrying *any* of the given tags.
+    ///   - orderBy: Optional server-side ordering. `nil` uses the server default.
+    public func shortURLs(
+        page: Int = 1,
+        itemsPerPage: Int = 20,
+        searchTerm: String? = nil,
+        tags: [String] = [],
+        orderBy: ShortURLsOrder? = nil
+    ) async throws -> Pagination<ShortURL> {
+        var queryItems = [
+            URLQueryItem(name: "page", value: String(page)),
+            URLQueryItem(name: "itemsPerPage", value: String(itemsPerPage)),
+        ]
+        if let searchTerm, !searchTerm.isEmpty {
+            queryItems.append(URLQueryItem(name: "searchTerm", value: searchTerm))
+        }
+        if let orderBy {
+            queryItems.append(URLQueryItem(name: "orderBy", value: orderBy.rawValue))
+        }
+        // Shlink expects repeated `tags[]` items (PHP-style array encoding).
+        for tag in tags where !tag.isEmpty {
+            queryItems.append(URLQueryItem(name: "tags[]", value: tag))
+        }
+
+        let request = try makeRequest(path: "short-urls", queryItems: queryItems)
         // Shlink nests the paginated payload under a `shortUrls` key.
         let wrapper: ShortURLsResponse = try await send(request)
         return wrapper.shortUrls

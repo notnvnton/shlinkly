@@ -76,3 +76,10 @@ public struct ShortURL: Codable, Sendable, Equatable {
         self.meta = meta
     }
 }
+
+extension ShortURL: Identifiable {
+    /// A stable identity for list diffing. `shortCode` is unique only within a
+    /// domain, so the domain is folded in to stay correct when a result set
+    /// spans the default domain plus custom ones.
+    public var id: String { "\(domain ?? "DEFAULT")/\(shortCode)" }
+}
