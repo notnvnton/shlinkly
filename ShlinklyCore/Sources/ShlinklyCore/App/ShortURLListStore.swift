@@ -100,7 +100,7 @@ public final class ShortURLListStore {
             apply(firstPage: result)
         } catch {
             guard !(error is CancellationError) else { return }
-            if items.isEmpty { state = .error(Self.message(for: error)) }
+            if items.isEmpty { state = .error(ShlinkError.userFacingMessage(for: error)) }
             // Otherwise keep the existing list rather than discarding it.
         }
     }
@@ -152,7 +152,7 @@ public final class ShortURLListStore {
             apply(firstPage: result)
         } catch {
             guard !Task.isCancelled, !(error is CancellationError) else { return }
-            state = .error(Self.message(for: error))
+            state = .error(ShlinkError.userFacingMessage(for: error))
         }
     }
 
@@ -188,23 +188,4 @@ public final class ShortURLListStore {
         )
     }
 
-    // MARK: - Error presentation
-
-    /// Maps a thrown error onto a short, user-facing sentence.
-    static func message(for error: Error) -> String {
-        switch error {
-        case ShlinkError.unauthorized:
-            return "Your API key was rejected. Check the server credentials."
-        case ShlinkError.notFound:
-            return "The server endpoint could not be found."
-        case ShlinkError.networkError:
-            return "Couldn't reach the server. Check your connection and try again."
-        case ShlinkError.apiError(let problem):
-            return problem.detail ?? problem.title ?? "The server returned an error."
-        case ShlinkError.decodingError:
-            return "The server sent a response the app couldn't read."
-        default:
-            return "Something went wrong. Please try again."
-        }
-    }
 }
