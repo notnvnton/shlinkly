@@ -14,9 +14,20 @@ struct ShortURLListScreen: View {
     @State private var store: ShortURLListStore
     @State private var didInitialLoad = false
 
+    #if os(macOS)
+    /// Drives the detail column of the split view. macOS selects on tap; iOS
+    /// pushes via `NavigationLink` instead and has no selection binding.
+    @Binding private var selection: Route?
+
+    init(client: ShlinkClient, selection: Binding<Route?>) {
+        _store = State(initialValue: ShortURLListStore(client: client))
+        _selection = selection
+    }
+    #else
     init(client: ShlinkClient) {
         _store = State(initialValue: ShortURLListStore(client: client))
     }
+    #endif
 
     var body: some View {
         content
@@ -49,14 +60,26 @@ struct ShortURLListScreen: View {
     // MARK: - Loaded list
 
     private var listView: some View {
+        #if os(macOS)
+        List(selection: $selection) {
+            ForEach(store.items) { item in
+                ShortURLRow(shortURL: item)
+                    .tag(Route.shortURLDetail(item))
+                    .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
+            }
+
+            if store.state == .loadingMore {
+                loadMoreFooter
+            }
+        }
+        .listStyle(.inset)
+        .refreshable { await store.refresh() }
+        #else
         List {
             ForEach(store.items) { item in
-                Button {
-                    // TODO: push the detail screen (layer 2).
-                } label: {
+                NavigationLink(value: Route.shortURLDetail(item)) {
                     ShortURLRow(shortURL: item)
                 }
-                .buttonStyle(.plain)
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
             }
 
@@ -66,6 +89,7 @@ struct ShortURLListScreen: View {
         }
         .listStyle(.plain)
         .refreshable { await store.refresh() }
+        #endif
     }
 
     private var loadMoreFooter: some View {
