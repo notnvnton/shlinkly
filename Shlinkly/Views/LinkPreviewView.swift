@@ -71,11 +71,21 @@ struct LinkPreviewView: View {
 #if os(macOS)
 import AppKit
 
+/// `LPLinkView` on macOS swallows the scroll wheel (and clicks) over its bounds,
+/// so a scroll gesture that begins on the preview never reaches the enclosing
+/// SwiftUI `ScrollView` — the same gesture theft the iOS branch fixes with
+/// `isUserInteractionEnabled = false`. Dropping the view out of hit-testing lets
+/// scrolls and clicks fall through to the page. The preview is decorative here;
+/// the header carries the "Open in browser" button.
+private final class PassthroughLinkView: LPLinkView {
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+}
+
 private struct LinkMetadataView: NSViewRepresentable {
     let metadata: LPLinkMetadata
 
     func makeNSView(context: Context) -> LPLinkView {
-        LPLinkView(metadata: metadata)
+        PassthroughLinkView(metadata: metadata)
     }
 
     func updateNSView(_ view: LPLinkView, context: Context) {

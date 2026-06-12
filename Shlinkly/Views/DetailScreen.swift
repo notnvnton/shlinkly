@@ -53,7 +53,7 @@ struct DetailScreen: View {
                 breakdownSections
             }
             .padding()
-            .frame(maxWidth: 680, alignment: .leading)
+            .frame(maxWidth: contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
         .navigationTitle(navigationTitle)
@@ -157,21 +157,38 @@ struct DetailScreen: View {
 
     // MARK: - Breakdowns (countries + sources)
 
-    /// The country and source breakdowns, stacked under the time chart. Shown
-    /// only once visits have loaded — while loading / empty / error the chart
-    /// section already carries the state, so we don't repeat it here. Both track
-    /// the period and the bot toggle through the store. macOS shares the stack
-    /// for now; the 2×2 grid lands in layer 2b.3.
+    /// The country and source breakdowns under the time chart. Shown only once
+    /// visits have loaded — while loading / empty / error the chart section
+    /// already carries the state, so we don't repeat it here. Both track the
+    /// period and the bot toggle through the store. macOS lays them out as two
+    /// side-by-side columns (the wider window has room); iPhone keeps the stack.
     @ViewBuilder
     private var breakdownSections: some View {
         if store.state == .loaded {
-            CountryBreakdownList(title: "Countries",
-                                 dateRange: store.windowDateRange,
-                                 entries: store.countryCounts)
-            RankedBarList(title: "Sources",
-                          dateRange: store.windowDateRange,
-                          entries: store.sourceCounts)
+            #if os(macOS)
+            HStack(alignment: .top, spacing: 24) {
+                countryBreakdown
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                sourceBreakdown
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            #else
+            countryBreakdown
+            sourceBreakdown
+            #endif
         }
+    }
+
+    private var countryBreakdown: some View {
+        CountryBreakdownList(title: "Countries",
+                             dateRange: store.windowDateRange,
+                             entries: store.countryCounts)
+    }
+
+    private var sourceBreakdown: some View {
+        RankedBarList(title: "Sources",
+                      dateRange: store.windowDateRange,
+                      entries: store.sourceCounts)
     }
 
     @ViewBuilder
@@ -234,6 +251,16 @@ struct DetailScreen: View {
     // MARK: - Derived values
 
     private var destinationURL: URL? { URL(string: shortURL.longUrl) }
+
+    /// Reading width for the scroll content. macOS gets a wider column so the
+    /// side-by-side Countries/Sources breakdown has room; iPhone stays narrow.
+    private var contentMaxWidth: CGFloat {
+        #if os(macOS)
+        860
+        #else
+        680
+        #endif
+    }
 
     private var headerTitle: String {
         if let title = shortURL.title, !title.isEmpty { return title }
