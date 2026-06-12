@@ -78,8 +78,11 @@ struct DetailScreen: View {
                     copyShortURL()
                 } label: {
                     Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
+                        .font(.subheadline)
                         .foregroundStyle(didCopy ? Color.green : Color.accentColor)
                         .contentTransition(.symbolEffect(.replace))
+                        // Fixed box so the doc → checkmark swap can't nudge layout.
+                        .frame(width: 22, height: 22)
                 }
                 .buttonStyle(.borderless)
                 .help("Copy short URL")
@@ -172,7 +175,7 @@ struct DetailScreen: View {
                 }
             }
         case .loaded:
-            VisitsBarChart(data: store.dailyCounts)
+            VisitsBarChart(data: store.dailyCounts, yMax: store.chartYDomainMax)
                 .frame(height: 220)
         }
     }
