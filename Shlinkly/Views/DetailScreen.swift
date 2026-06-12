@@ -159,9 +159,9 @@ struct DetailScreen: View {
     @ViewBuilder
     private var breakdownSections: some View {
         if store.state == .loaded {
-            RankedBarList(title: "Countries",
-                          dateRange: store.windowDateRange,
-                          entries: store.countryCounts)
+            CountryBreakdownList(title: "Countries",
+                                 dateRange: store.windowDateRange,
+                                 entries: store.countryCounts)
             RankedBarList(title: "Sources",
                           dateRange: store.windowDateRange,
                           entries: store.sourceCounts)
