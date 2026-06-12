@@ -73,12 +73,17 @@ public final class ShortURLDetailStore {
         /// Whether to visually dim the row. Set for the "Unknown" country
         /// bucket; "Direct" is a real category, so it stays full strength.
         public let isDimmed: Bool
+        /// ISO 3166-1 alpha-2 country code for the bucket, when known. Carried
+        /// for the country breakdown's flag; `nil` for sources and the
+        /// "Unknown" bucket.
+        public let code: String?
         public var id: String { label }
 
-        public init(label: String, count: Int, isDimmed: Bool) {
+        public init(label: String, count: Int, isDimmed: Bool, code: String? = nil) {
             self.label = label
             self.count = count
             self.isDimmed = isDimmed
+            self.code = code
         }
     }
 
@@ -312,15 +317,23 @@ public final class ShortURLDetailStore {
     /// a dimmed "Unknown" bucket which ranks on its own count — it isn't pinned.
     private func countryCounts(excludingBots: Bool) -> [RankedEntry] {
         let filtered = excludingBots ? visits.filter { !$0.potentialBot } : visits
-        var counts: [String: Int] = [:]
+        // Tally per country name, keeping the first non-empty code we see so the
+        // UI can render a flag. The "Unknown" bucket stays code-less.
+        var counts: [String: (count: Int, code: String?)] = [:]
         for visit in filtered {
             let name = visit.visitLocation?.countryName
             let label = (name?.isEmpty == false) ? name! : Self.unknownCountryLabel
-            counts[label, default: 0] += 1
+            var bucket = counts[label] ?? (0, nil)
+            bucket.count += 1
+            if bucket.code == nil, let code = visit.visitLocation?.countryCode, !code.isEmpty {
+                bucket.code = code
+            }
+            counts[label] = bucket
         }
         return counts
-            .map { RankedEntry(label: $0.key, count: $0.value,
-                               isDimmed: $0.key == Self.unknownCountryLabel) }
+            .map { RankedEntry(label: $0.key, count: $0.value.count,
+                               isDimmed: $0.key == Self.unknownCountryLabel,
+                               code: $0.value.code) }
             .sorted(by: Self.rankOrder)
     }
 
