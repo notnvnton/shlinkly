@@ -326,19 +326,15 @@ private struct MetricCard: View {
 
 // MARK: - Tag chips
 
-/// Static, wrapping tag chips. Tappable filtering arrives in layer 2b.
+/// Static, wrapping tag chips built from the shared ``TagChip`` style.
+/// Tappable filtering arrives in layer 2b.2.
 private struct TagChipsView: View {
     let tags: [String]
 
     var body: some View {
-        FlowLayout(spacing: 8) {
+        FlowLayout(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
-                Text(tag)
-                    .font(.caption.weight(.medium))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(Color.primary.opacity(0.08), in: Capsule())
-                    .foregroundStyle(.secondary)
+                TagChip(text: tag)
             }
         }
     }
