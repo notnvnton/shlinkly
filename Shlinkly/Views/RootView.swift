@@ -12,32 +12,12 @@ import ShlinklyCore
 struct RootView: View {
     @Environment(AppModel.self) private var appModel
 
-    #if os(macOS)
-    @State private var selection: Route?
-    #endif
-
     var body: some View {
         if let client = appModel.client {
-            #if os(macOS)
-            NavigationSplitView {
-                SidebarPlaceholder()
-            } content: {
-                ShortURLListScreen(client: client, selection: $selection)
-            } detail: {
-                if let selection {
-                    destination(selection, client: client)
-                } else {
-                    DetailPlaceholder()
-                }
-            }
-            #else
-            NavigationStack {
-                ShortURLListScreen(client: client)
-                    .navigationDestination(for: Route.self) { route in
-                        destination(route, client: client)
-                    }
-            }
-            #endif
+            // Identity-keyed so a re-activated server (new client) rebuilds the
+            // shared list store rather than reusing the old one.
+            ConfiguredRoot(client: client)
+                .id(ObjectIdentifier(client))
         } else {
             ContentUnavailableView(
                 "No server configured",
@@ -46,17 +26,71 @@ struct RootView: View {
             )
         }
     }
+}
+
+/// The navigation shell for an active server. Owns the shared
+/// ``ShortURLListStore`` so the list and the detail screen filter the *same*
+/// state — tapping a tag on detail genuinely narrows the list behind it.
+private struct ConfiguredRoot: View {
+    let client: ShlinkClient
+    @State private var listStore: ShortURLListStore
+
+    #if os(macOS)
+    @State private var selection: Route?
+    #else
+    @State private var path: [Route] = []
+    #endif
+
+    init(client: ShlinkClient) {
+        self.client = client
+        _listStore = State(initialValue: ShortURLListStore(client: client))
+    }
+
+    var body: some View {
+        #if os(macOS)
+        NavigationSplitView {
+            SidebarPlaceholder()
+        } content: {
+            ShortURLListScreen(store: listStore, selection: $selection)
+        } detail: {
+            if let selection {
+                destination(selection)
+            } else {
+                DetailPlaceholder()
+            }
+        }
+        #else
+        NavigationStack(path: $path) {
+            ShortURLListScreen(store: listStore)
+                .navigationDestination(for: Route.self) { route in
+                    destination(route)
+                }
+        }
+        #endif
+    }
 
     /// Resolves a route to its screen. Keyed by short-URL identity so selecting
     /// a different link rebuilds the screen (and its store) rather than reusing
     /// stale state.
     @ViewBuilder
-    private func destination(_ route: Route, client: ShlinkClient) -> some View {
+    private func destination(_ route: Route) -> some View {
         switch route {
         case .shortURLDetail(let shortURL):
-            DetailScreen(shortURL: shortURL, client: client)
+            DetailScreen(shortURL: shortURL, client: client, onSelectTag: applyTagFilter)
                 .id(shortURL.id)
         }
+    }
+
+    /// Applies a tag filter from the detail screen and returns to the list:
+    /// iOS pops the stack to root, macOS clears the detail selection so the
+    /// refreshed (filtered) list is what the user lands on.
+    private func applyTagFilter(_ tag: String) {
+        listStore.setActiveTag(tag)
+        #if os(macOS)
+        selection = nil
+        #else
+        path.removeAll()
+        #endif
     }
 }
 
