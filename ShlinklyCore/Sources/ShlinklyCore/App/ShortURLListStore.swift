@@ -35,6 +35,10 @@ public final class ShortURLListStore {
     public private(set) var searchTerm: String = ""
     /// The active sort order. Update via ``setOrder(_:)`` so the list reloads.
     public private(set) var order: ShortURLsOrder = .newest
+    /// The tag the list is filtered to, or `nil` for no tag filter. Set via
+    /// ``setActiveTag(_:)``; combines with ``searchTerm``. A single tag for now —
+    /// the network layer already accepts several.
+    public private(set) var activeTag: String?
 
     /// Whether another page exists beyond what's loaded.
     public var hasMore: Bool { currentPage < totalPages }
@@ -143,6 +147,16 @@ public final class ShortURLListStore {
         loadFirstPage()
     }
 
+    /// Filters the list to a single tag (or clears the filter with `nil`) and
+    /// reloads from the first page. An empty string is treated as no filter.
+    /// The filter combines with the active ``searchTerm``.
+    public func setActiveTag(_ tag: String?) {
+        let normalized = (tag?.isEmpty ?? true) ? nil : tag
+        guard normalized != activeTag else { return }
+        activeTag = normalized
+        loadFirstPage()
+    }
+
     // MARK: - Workers
 
     private func runFirstPage() async {
@@ -184,6 +198,7 @@ public final class ShortURLListStore {
             page: page,
             itemsPerPage: pageSize,
             searchTerm: searchTerm.isEmpty ? nil : searchTerm,
+            tags: activeTag.map { [$0] } ?? [],
             orderBy: order
         )
     }
