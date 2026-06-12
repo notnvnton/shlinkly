@@ -41,9 +41,10 @@ struct DetailScreen: View {
                 }
                 periodPicker
                 metricCards
-                Toggle("Exclude bots from chart", isOn: excludeBotsBinding)
+                Toggle("Exclude bots", isOn: excludeBotsBinding)
                     .font(.subheadline)
                 chartSection
+                breakdownSections
             }
             .padding()
             .frame(maxWidth: 680, alignment: .leading)
@@ -145,6 +146,25 @@ struct DetailScreen: View {
             }
             chartContent
                 .frame(maxWidth: .infinity)
+        }
+    }
+
+    // MARK: - Breakdowns (countries + sources)
+
+    /// The country and source breakdowns, stacked under the time chart. Shown
+    /// only once visits have loaded — while loading / empty / error the chart
+    /// section already carries the state, so we don't repeat it here. Both track
+    /// the period and the bot toggle through the store. macOS shares the stack
+    /// for now; the 2×2 grid lands in layer 2b.3.
+    @ViewBuilder
+    private var breakdownSections: some View {
+        if store.state == .loaded {
+            RankedBarList(title: "Countries",
+                          dateRange: store.windowDateRange,
+                          entries: store.countryCounts)
+            RankedBarList(title: "Sources",
+                          dateRange: store.windowDateRange,
+                          entries: store.sourceCounts)
         }
     }
 
