@@ -6,7 +6,7 @@ import Foundation
 /// Shlink attaches this same summary to several entities — short URLs, tag
 /// stats and domain stats — so it lives as a standalone, reusable type rather
 /// than being nested under any one of them.
-public struct VisitsSummary: Codable, Sendable, Equatable {
+public struct VisitsSummary: Codable, Sendable, Equatable, Hashable {
     /// Total visits, including those classified as bots.
     public let total: Int
     /// Visits Shlink classified as genuine (non-bot).

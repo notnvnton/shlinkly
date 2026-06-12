@@ -6,7 +6,7 @@ import Foundation
 /// (https://api-spec.shlink.io/). Fields that Shlink may return as `null`
 /// — or omit entirely — are modelled as optionals so decoding never fails on
 /// a sparsely-populated record.
-public struct ShortURL: Codable, Sendable, Equatable {
+public struct ShortURL: Codable, Sendable, Equatable, Hashable {
     /// The unique short code (the part after the domain, e.g. `12C18`).
     public let shortCode: String
     /// The fully-qualified short URL, e.g. `https://doma.in/12C18`.
@@ -35,7 +35,7 @@ public struct ShortURL: Codable, Sendable, Equatable {
     ///
     /// Every field is nullable in the API: a short URL with no constraints
     /// returns `{ "validSince": null, "validUntil": null, "maxVisits": null }`.
-    public struct Meta: Codable, Sendable, Equatable {
+    public struct Meta: Codable, Sendable, Equatable, Hashable {
         /// The short URL is invalid before this instant. Nullable.
         public let validSince: Date?
         /// The short URL is invalid after this instant. Nullable.
