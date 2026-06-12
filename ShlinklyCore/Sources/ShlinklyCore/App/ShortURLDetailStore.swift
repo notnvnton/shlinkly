@@ -60,6 +60,28 @@ public final class ShortURLDetailStore {
         public var id: Date { day }
     }
 
+    /// One row of a ranked breakdown (countries, referrer sources): a label,
+    /// its visit count for the period, and whether it's a low-signal bucket the
+    /// UI should de-emphasise.
+    public struct RankedEntry: Identifiable, Equatable, Sendable {
+        /// Display label — a country name, a referrer host, or a sentinel
+        /// ("Unknown" / "Direct"). The breakdowns aggregate by label, so it's
+        /// unique within a list and doubles as the identity.
+        public let label: String
+        /// Number of visits in this bucket for the current period.
+        public let count: Int
+        /// Whether to visually dim the row. Set for the "Unknown" country
+        /// bucket; "Direct" is a real category, so it stays full strength.
+        public let isDimmed: Bool
+        public var id: String { label }
+
+        public init(label: String, count: Int, isDimmed: Bool) {
+            self.label = label
+            self.count = count
+            self.isDimmed = isDimmed
+        }
+    }
+
     /// A total / people / bots breakdown.
     public struct Metrics: Equatable, Sendable {
         public let total: Int
@@ -76,8 +98,10 @@ public final class ShortURLDetailStore {
     public private(set) var state: ViewState = .loading
     /// The active period. Change via ``setPeriod(_:)`` so the visits reload.
     public private(set) var period: Period = .last7Days
-    /// Whether the chart hides bot visits. A purely local filter — it never
-    /// triggers a request and never affects the metric cards.
+    /// Whether the breakdowns hide bot visits. Drives all three derived views —
+    /// the daily chart, the country breakdown and the source breakdown — from a
+    /// single switch. A purely local filter: it never triggers a request and
+    /// never affects the metric cards.
     public var excludeBots: Bool = false
 
     /// Every visit loaded for the current period, bots included. The chart
@@ -230,6 +254,22 @@ public final class ShortURLDetailStore {
         dailyCounts(excludingBots: excludeBots)
     }
 
+    /// Visits grouped by visitor country, ranked high to low. Built from the
+    /// same loaded period as the chart and honouring the same bot toggle.
+    /// Visits Shlink couldn't geolocate fall into a dimmed "Unknown" bucket
+    /// that ranks by its own count like any other row.
+    public var countryCounts: [RankedEntry] {
+        countryCounts(excludingBots: excludeBots)
+    }
+
+    /// Visits grouped by referrer host, ranked high to low. Built from the same
+    /// loaded period as the chart and honouring the same bot toggle. Visits with
+    /// no usable referer collapse into a "Direct" bucket — a real category, so
+    /// it isn't dimmed.
+    public var sourceCounts: [RankedEntry] {
+        sourceCounts(excludingBots: excludeBots)
+    }
+
     /// Upper bound for the chart's Y axis: the "nice" rounded peak of the full
     /// (bot-inclusive) daily counts for the current period.
     ///
@@ -261,6 +301,60 @@ public final class ShortURLDetailStore {
             cursor = next
         }
         return result
+    }
+
+    /// Sentinel labels for the buckets that aren't a real country / referrer.
+    static let unknownCountryLabel = "Unknown"
+    static let directSourceLabel = "Direct"
+
+    /// Visits in the loaded set bucketed by country name and ranked by count,
+    /// optionally dropping bots. Ungeolocated visits (no country name) fall into
+    /// a dimmed "Unknown" bucket which ranks on its own count — it isn't pinned.
+    private func countryCounts(excludingBots: Bool) -> [RankedEntry] {
+        let filtered = excludingBots ? visits.filter { !$0.potentialBot } : visits
+        var counts: [String: Int] = [:]
+        for visit in filtered {
+            let name = visit.visitLocation?.countryName
+            let label = (name?.isEmpty == false) ? name! : Self.unknownCountryLabel
+            counts[label, default: 0] += 1
+        }
+        return counts
+            .map { RankedEntry(label: $0.key, count: $0.value,
+                               isDimmed: $0.key == Self.unknownCountryLabel) }
+            .sorted(by: Self.rankOrder)
+    }
+
+    /// Visits in the loaded set bucketed by referrer host and ranked by count,
+    /// optionally dropping bots. Hosts are normalised by stripping a leading
+    /// "www."; an empty, missing or unparseable referer collapses into "Direct".
+    private func sourceCounts(excludingBots: Bool) -> [RankedEntry] {
+        let filtered = excludingBots ? visits.filter { !$0.potentialBot } : visits
+        var counts: [String: Int] = [:]
+        for visit in filtered {
+            counts[Self.sourceLabel(for: visit.referer), default: 0] += 1
+        }
+        return counts
+            .map { RankedEntry(label: $0.key, count: $0.value, isDimmed: false) }
+            .sorted(by: Self.rankOrder)
+    }
+
+    /// The referrer host to show for a visit, normalised: the URL host with any
+    /// leading "www." removed. An empty / nil / unparseable referer (no host)
+    /// becomes "Direct", matching how Shlink records direct visits.
+    static func sourceLabel(for referer: String?) -> String {
+        guard let referer,
+              !referer.trimmingCharacters(in: .whitespaces).isEmpty,
+              let host = URLComponents(string: referer)?.host,
+              !host.isEmpty
+        else { return directSourceLabel }
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    /// Ranking order shared by both breakdowns: count descending, then label
+    /// ascending so equal counts get a stable, deterministic order across the
+    /// dictionary's unordered iteration.
+    private static func rankOrder(_ a: RankedEntry, _ b: RankedEntry) -> Bool {
+        a.count != b.count ? a.count > b.count : a.label < b.label
     }
 
     /// Rounds `value` up to a "nice" axis maximum (1, 2 or 5 × 10ⁿ); never
