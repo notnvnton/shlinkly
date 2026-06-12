@@ -157,6 +157,15 @@ public final class ShortURLListStore {
         loadFirstPage()
     }
 
+    /// Applies a tag chosen from a search suggestion: clears the search term and
+    /// sets the tag in a single reload, so the user lands on the tag-filtered
+    /// list rather than the text-search results they were typing.
+    public func applyTagFromSearch(_ tag: String) {
+        searchTerm = ""
+        activeTag = tag.isEmpty ? nil : tag
+        loadFirstPage()
+    }
+
     // MARK: - Workers
 
     private func runFirstPage() async {
