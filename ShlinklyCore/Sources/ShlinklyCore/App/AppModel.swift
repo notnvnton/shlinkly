@@ -75,18 +75,19 @@ public final class AppModel {
     /// Adds a server. The first one becomes active and comes online (leaving
     /// onboarding); a server added alongside others is left for the user to
     /// switch to deliberately, so the current session isn't disrupted.
-    public func addInstance(_ instance: ServerInstance, apiKey: String) {
+    public func addInstance(_ instance: ServerInstance, apiKey: String) throws {
         let hadActiveServer = activeInstance != nil
-        guard instanceStore.add(instance, apiKey: apiKey) else { return }
+        try instanceStore.add(instance, apiKey: apiKey)
         if !hadActiveServer {
             activate(instance, apiKey: apiKey)
         }
     }
 
     /// Saves edits to a server. If the edited server is the active one, its
-    /// client is rebuilt (URL or key may have changed).
-    public func updateInstance(_ instance: ServerInstance, apiKey: String) {
-        guard instanceStore.update(instance, apiKey: apiKey) else { return }
+    /// client is rebuilt (URL or key may have changed). Throws (changing nothing
+    /// live) if the key couldn't be written.
+    public func updateInstance(_ instance: ServerInstance, apiKey: String) throws {
+        try instanceStore.update(instance, apiKey: apiKey)
         if instance.id == activeInstance?.id {
             activate(instance, apiKey: apiKey)
         }

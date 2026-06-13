@@ -19,6 +19,16 @@ public protocol KeychainStoring: Sendable {
 public enum KeychainError: Error, Equatable {
     /// A `Security` call returned an unexpected `OSStatus`.
     case unhandled(OSStatus)
+
+    /// A user-facing explanation for the connect screen. Carries the raw
+    /// `OSStatus` to aid diagnosis — e.g. `-34018` (`errSecMissingEntitlement`)
+    /// is what macOS returns until the Keychain Sharing capability is added.
+    public var message: String {
+        switch self {
+        case .unhandled(let status):
+            return "Couldn't save the API key to your Keychain (error \(status)). The server wasn't added."
+        }
+    }
 }
 
 /// A `kSecClassGenericPassword`-backed ``KeychainStoring``.
@@ -68,7 +78,13 @@ public struct KeychainStore: KeychainStoring {
         }
 
         let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw KeychainError.unhandled(status) }
+        guard status == errSecSuccess else {
+            // Don't drop the key silently: log the OSStatus (e.g. -34018,
+            // errSecMissingEntitlement, on macOS before Keychain Sharing is
+            // added) and throw so the caller can show it. Nothing is persisted.
+            NSLog("Shlinkly: Keychain save failed — OSStatus=%d, synchronizable=%@", Int(status), synchronizable ? "true" : "false")
+            throw KeychainError.unhandled(status)
+        }
     }
 
     public func read(account: String) -> String? {

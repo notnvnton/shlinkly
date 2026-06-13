@@ -28,6 +28,16 @@ private final class FakeKeychain: KeychainStoring, @unchecked Sendable {
     }
 }
 
+/// A ``KeychainStoring`` whose `save` always fails — used to prove the store
+/// propagates the error (and persists nothing) instead of dropping the key.
+private struct FailingKeychain: KeychainStoring {
+    func save(_ value: String, account: String, synchronizable: Bool) throws {
+        throw KeychainError.unhandled(-34018) // errSecMissingEntitlement
+    }
+    func read(account: String) -> String? { nil }
+    func delete(account: String) throws {}
+}
+
 /// A throwaway `UserDefaults` suite so tests don't touch the real domain.
 private func makeDefaults() -> UserDefaults {
     let suite = "shlinkly.tests.\(UUID().uuidString)"
@@ -49,7 +59,7 @@ struct InstanceStoreTests {
         let instance = makeInstance()
 
         #expect(store.isEmpty)
-        #expect(store.add(instance, apiKey: "key-1"))
+        try store.add(instance, apiKey: "key-1")
 
         #expect(store.activeInstanceID == instance.id)
         #expect(store.activeInstance == instance)
@@ -63,7 +73,7 @@ struct InstanceStoreTests {
         let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
         let instance = makeInstance(storage: .iCloud)
 
-        #expect(store.add(instance, apiKey: "key-icloud"))
+        try store.add(instance, apiKey: "key-icloud")
         #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == true)
     }
 
@@ -72,11 +82,11 @@ struct InstanceStoreTests {
         let keychain = FakeKeychain()
         let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
         var instance = makeInstance(storage: .local)
-        #expect(store.add(instance, apiKey: "k"))
+        try store.add(instance, apiKey: "k")
         #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == false)
 
         instance.keyStorage = .iCloud
-        #expect(store.update(instance, apiKey: "k"))
+        try store.update(instance, apiKey: "k")
         #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == true)
     }
 
@@ -86,8 +96,8 @@ struct InstanceStoreTests {
         let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
         let first = makeInstance(host: "one.example.com")
         let second = makeInstance(host: "two.example.com")
-        #expect(store.add(first, apiKey: "k1"))
-        #expect(store.add(second, apiKey: "k2"))
+        try store.add(first, apiKey: "k1")
+        try store.add(second, apiKey: "k2")
         #expect(store.activeInstanceID == first.id)
 
         store.remove(first.id)
@@ -96,11 +106,23 @@ struct InstanceStoreTests {
         #expect(store.instances.count == 1)
     }
 
+    @Test("A failed key save propagates and persists nothing")
+    func failedSavePropagates() async throws {
+        let store = InstanceStore(defaults: makeDefaults(), keychain: FailingKeychain())
+        let instance = makeInstance()
+
+        #expect(throws: KeychainError.self) {
+            try store.add(instance, apiKey: "k")
+        }
+        #expect(store.isEmpty)
+        #expect(store.activeInstanceID == nil)
+    }
+
     @Test("Removing the last instance clears the active selection")
     func removeLastDeactivates() async throws {
         let store = InstanceStore(defaults: makeDefaults(), keychain: FakeKeychain())
         let only = makeInstance()
-        #expect(store.add(only, apiKey: "k"))
+        try store.add(only, apiKey: "k")
         store.remove(only.id)
         #expect(store.isEmpty)
         #expect(store.activeInstanceID == nil)
@@ -114,8 +136,8 @@ struct InstanceStoreTests {
         let second = makeInstance(host: "two.example.com")
         do {
             let store = InstanceStore(defaults: defaults, keychain: keychain)
-            #expect(store.add(first, apiKey: "k1"))
-            #expect(store.add(second, apiKey: "k2"))
+            try store.add(first, apiKey: "k1")
+            try store.add(second, apiKey: "k2")
             store.setActive(second.id)
         }
         // A fresh store reading the same defaults sees the same state.

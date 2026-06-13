@@ -19,7 +19,7 @@ struct OnboardingView: View {
             WelcomeScreen { showConnectForm = true }
                 .navigationDestination(isPresented: $showConnectForm) {
                     ServerFormView(mode: .add) { instance, key in
-                        appModel.addInstance(instance, apiKey: key)
+                        try appModel.addInstance(instance, apiKey: key)
                     }
                 }
         }
