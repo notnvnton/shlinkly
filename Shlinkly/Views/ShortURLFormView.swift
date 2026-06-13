@@ -150,15 +150,7 @@ struct ShortURLFormView: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Spacer(minLength: 8)
-                Button {
-                    if let url = model.editingShortURL?.shortUrl {
-                        Clipboard.copy(url)
-                    }
-                } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Copy short URL")
+                CopyButton(value: model.editingShortURL?.shortUrl ?? "", label: "Copy short URL")
             }
         } header: {
             Text("Short code")
