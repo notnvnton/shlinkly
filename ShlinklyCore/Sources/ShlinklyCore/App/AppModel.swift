@@ -70,6 +70,23 @@ public final class AppModel {
         client = nil
     }
 
+    /// Re-reads the Keychain-backed store (the source of truth) and brings any
+    /// newly-appeared server online. Call at scene activation: a server added with
+    /// iCloud sync on another device shows up the next time the app becomes
+    /// active. The current session is left untouched while its server is still
+    /// present, so a refresh never yanks an in-use server out from under the UI;
+    /// it only (re)activates when there's nothing live yet, or the active server
+    /// vanished (e.g. it was removed on another device).
+    public func refreshFromStore() {
+        instanceStore.reload()
+        let activeStillPresent = activeInstance.map { current in
+            instanceStore.instances.contains { $0.id == current.id }
+        } ?? false
+        if !activeStillPresent {
+            bootstrap()
+        }
+    }
+
     // MARK: - Server management
 
     /// Adds a server. The first one becomes active and comes online (leaving

@@ -2,40 +2,44 @@ import Foundation
 import Testing
 @testable import ShlinklyCore
 
-/// In-memory ``KeychainStoring`` for tests: no real Keychain, but it records the
-/// `synchronizable` flag each key was saved with so storage-change behaviour can
-/// be asserted.
+/// In-memory ``KeychainStoring`` for tests: no real Keychain, but it keeps the
+/// full record (secret + metadata + `synchronizable`) each server was saved with,
+/// so storage-change behaviour and reload-from-Keychain can be asserted.
 private final class FakeKeychain: KeychainStoring, @unchecked Sendable {
-    struct Entry: Equatable { var value: String; var synchronizable: Bool }
     private let lock = NSLock()
-    private var store: [String: Entry] = [:]
+    private var store: [String: KeychainRecord] = [:]
 
-    func save(_ value: String, account: String, synchronizable: Bool) throws {
+    func save(_ record: KeychainRecord) throws {
         lock.lock(); defer { lock.unlock() }
-        store[account] = Entry(value: value, synchronizable: synchronizable)
+        store[record.account] = record
     }
-    func read(account: String) -> String? {
+    func readSecret(account: String) -> String? {
         lock.lock(); defer { lock.unlock() }
-        return store[account]?.value
+        return store[account]?.secret
     }
     func delete(account: String) throws {
         lock.lock(); defer { lock.unlock() }
         store[account] = nil
     }
-    func entry(account: String) -> Entry? {
+    func allRecords() -> [KeychainRecord] {
+        lock.lock(); defer { lock.unlock() }
+        return Array(store.values)
+    }
+    func record(account: String) -> KeychainRecord? {
         lock.lock(); defer { lock.unlock() }
         return store[account]
     }
 }
 
 /// A ``KeychainStoring`` whose `save` always fails — used to prove the store
-/// propagates the error (and persists nothing) instead of dropping the key.
+/// propagates the error (and persists nothing) instead of dropping the server.
 private struct FailingKeychain: KeychainStoring {
-    func save(_ value: String, account: String, synchronizable: Bool) throws {
+    func save(_ record: KeychainRecord) throws {
         throw KeychainError.unhandled(-34018) // errSecMissingEntitlement
     }
-    func read(account: String) -> String? { nil }
+    func readSecret(account: String) -> String? { nil }
     func delete(account: String) throws {}
+    func allRecords() -> [KeychainRecord] { [] }
 }
 
 /// A throwaway `UserDefaults` suite so tests don't touch the real domain.
@@ -64,7 +68,7 @@ struct InstanceStoreTests {
         #expect(store.activeInstanceID == instance.id)
         #expect(store.activeInstance == instance)
         #expect(store.apiKey(for: instance.id) == "key-1")
-        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == false)
+        #expect(keychain.record(account: instance.id.uuidString)?.synchronizable == false)
     }
 
     @Test("iCloud storage saves the key as synchronizable")
@@ -74,7 +78,7 @@ struct InstanceStoreTests {
         let instance = makeInstance(storage: .iCloud)
 
         try store.add(instance, apiKey: "key-icloud")
-        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == true)
+        #expect(keychain.record(account: instance.id.uuidString)?.synchronizable == true)
     }
 
     @Test("Changing storage on update rewrites the key with the new sync flag")
@@ -83,11 +87,11 @@ struct InstanceStoreTests {
         let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
         var instance = makeInstance(storage: .local)
         try store.add(instance, apiKey: "k")
-        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == false)
+        #expect(keychain.record(account: instance.id.uuidString)?.synchronizable == false)
 
         instance.keyStorage = .iCloud
         try store.update(instance, apiKey: "k")
-        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == true)
+        #expect(keychain.record(account: instance.id.uuidString)?.synchronizable == true)
     }
 
     @Test("Removing the active instance promotes the next and deletes the key")
@@ -144,6 +148,29 @@ struct InstanceStoreTests {
         let reloaded = InstanceStore(defaults: defaults, keychain: keychain)
         #expect(reloaded.instances.map(\.id) == [first.id, second.id])
         #expect(reloaded.activeInstanceID == second.id)
+    }
+
+    @Test("A synced server's name, URL and storage rebuild from the Keychain alone")
+    func metadataRebuildsFromKeychainOnAnotherDevice() async throws {
+        // The Keychain is the source of truth, so a server added on one device
+        // is reconstructed on another that shares only the iCloud Keychain — a
+        // *different* UserDefaults, standing in for a separate device.
+        let keychain = FakeKeychain()
+        let saved = makeInstance(name: "My Shlink", host: "go.example.com", storage: .iCloud)
+        do {
+            let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
+            try store.add(saved, apiKey: "the-key")
+        }
+
+        let otherDevice = InstanceStore(defaults: makeDefaults(), keychain: keychain)
+        let reloaded = try #require(otherDevice.instances.first)
+        #expect(otherDevice.instances.count == 1)
+        #expect(reloaded.id == saved.id)
+        #expect(reloaded.name == "My Shlink")
+        #expect(reloaded.baseURL == saved.baseURL)
+        #expect(reloaded.keyStorage == .iCloud)
+        #expect(otherDevice.apiKey(for: saved.id) == "the-key")
+        #expect(otherDevice.activeInstanceID == saved.id)
     }
 }
 

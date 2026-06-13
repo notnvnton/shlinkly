@@ -11,6 +11,7 @@ import ShlinklyCore
 @main
 struct ShlinklyApp: App {
     @State private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let model = AppModel()
@@ -24,6 +25,15 @@ struct ShlinklyApp: App {
         WindowGroup {
             RootView()
                 .environment(appModel)
+                // The servers live in the (iCloud-synced) Keychain, which has no
+                // live change notification — so re-read it whenever the app comes
+                // to the foreground. A server added with iCloud sync on another
+                // device appears here on this activation.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        appModel.refreshFromStore()
+                    }
+                }
         }
     }
 }
