@@ -86,7 +86,10 @@ struct ShortURLFormView: View {
                 }
 
                 Section("Long URL") {
-                    TextField("https://example.com/page", text: $model.longURL, axis: .vertical)
+                    // labelsHidden + in-field prompt so macOS doesn't render a
+                    // left label column; the field is full width as on iOS.
+                    TextField("Long URL", text: $model.longURL, prompt: Text("https://example.com/page"), axis: .vertical)
+                        .labelsHidden()
                         .lineLimit(1...4)
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
@@ -96,7 +99,8 @@ struct ShortURLFormView: View {
                 }
 
                 Section("Title") {
-                    TextField("Optional title", text: $model.title)
+                    TextField("Title", text: $model.title, prompt: Text("Optional title"))
+                        .labelsHidden()
                 }
 
                 Section("Tags") {
@@ -137,7 +141,8 @@ struct ShortURLFormView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                TextField("custom-slug", text: $model.customSlug)
+                TextField("Custom slug", text: $model.customSlug, prompt: Text("custom-slug"))
+                    .labelsHidden()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -196,7 +201,8 @@ struct ShortURLFormView: View {
                         infoMessage: Self.visitLimitHelp
                     )
                     if model.limitsVisits {
-                        TextField("e.g. 100", text: $model.maxVisitsText)
+                        TextField("Visit limit", text: $model.maxVisitsText, prompt: Text("e.g. 100"))
+                            .labelsHidden()
                             #if os(iOS)
                             .keyboardType(.numberPad)
                             #endif
@@ -291,7 +297,8 @@ private struct TagsField: View {
                 }
             }
 
-            TextField("Add a tag", text: $draft)
+            TextField("Tag", text: $draft, prompt: Text("Add a tag"))
+                .labelsHidden()
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

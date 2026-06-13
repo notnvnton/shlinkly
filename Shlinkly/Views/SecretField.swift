@@ -18,11 +18,14 @@ struct SecretField: View {
         HStack(spacing: 8) {
             Group {
                 if isRevealed {
-                    TextField(placeholder, text: $text)
+                    TextField("API key", text: $text, prompt: Text(placeholder))
                 } else {
-                    SecureField(placeholder, text: $text)
+                    SecureField("API key", text: $text, prompt: Text(placeholder))
                 }
             }
+            // Hide the label so macOS Form doesn't add a left label column; the
+            // prompt is the in-field placeholder.
+            .labelsHidden()
             #if os(iOS)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
