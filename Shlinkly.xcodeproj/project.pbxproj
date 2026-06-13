@@ -19,6 +19,7 @@
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
 				DevConfig.example.swift,
+				DevConfig.swift,
 			);
 			target = 5D3060752FDA043400B01249 /* Shlinkly */;
 		};

@@ -14,10 +14,9 @@ struct ShlinklyApp: App {
 
     init() {
         let model = AppModel()
-        // Phase 1: the active server + key come from the local dev config.
-        // A later layer swaps this single call for Keychain-backed instances;
-        // AppModel's consumers don't change.
-        model.activate(DevConfig.serverInstance, apiKey: DevConfig.apiKey)
+        // Credentials come from Keychain-backed instances: bootstrap brings the
+        // active server online, or leaves the app in onboarding when none exist.
+        model.bootstrap()
         _appModel = State(initialValue: model)
     }
 

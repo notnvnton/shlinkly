@@ -13,16 +13,24 @@ struct RootView: View {
     @Environment(AppModel.self) private var appModel
 
     var body: some View {
-        if let client = appModel.client {
+        if appModel.needsOnboarding {
+            // No servers configured yet — real onboarding arrives in step 2.
+            ContentUnavailableView(
+                "No server configured",
+                systemImage: "server.rack",
+                description: Text("Add a Shlink server to get started.")
+            )
+        } else if let client = appModel.client {
             // Identity-keyed so a re-activated server (new client) rebuilds the
             // shared list store rather than reusing the old one.
             ConfiguredRoot(client: client)
                 .id(ObjectIdentifier(client))
         } else {
+            // A server exists but its key couldn't be read from the Keychain.
             ContentUnavailableView(
-                "No server configured",
-                systemImage: "server.rack",
-                description: Text("Add a Shlink server to get started.")
+                "Couldn't load credentials",
+                systemImage: "key.slash",
+                description: Text("The saved API key for this server is unavailable. Re-add the server to continue.")
             )
         }
     }

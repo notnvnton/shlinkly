@@ -1,0 +1,163 @@
+import Foundation
+import Testing
+@testable import ShlinklyCore
+
+/// In-memory ``KeychainStoring`` for tests: no real Keychain, but it records the
+/// `synchronizable` flag each key was saved with so storage-change behaviour can
+/// be asserted.
+private final class FakeKeychain: KeychainStoring, @unchecked Sendable {
+    struct Entry: Equatable { var value: String; var synchronizable: Bool }
+    private let lock = NSLock()
+    private var store: [String: Entry] = [:]
+
+    func save(_ value: String, account: String, synchronizable: Bool) throws {
+        lock.lock(); defer { lock.unlock() }
+        store[account] = Entry(value: value, synchronizable: synchronizable)
+    }
+    func read(account: String) -> String? {
+        lock.lock(); defer { lock.unlock() }
+        return store[account]?.value
+    }
+    func delete(account: String) throws {
+        lock.lock(); defer { lock.unlock() }
+        store[account] = nil
+    }
+    func entry(account: String) -> Entry? {
+        lock.lock(); defer { lock.unlock() }
+        return store[account]
+    }
+}
+
+/// A throwaway `UserDefaults` suite so tests don't touch the real domain.
+private func makeDefaults() -> UserDefaults {
+    let suite = "shlinkly.tests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: suite)!
+    defaults.removePersistentDomain(forName: suite)
+    return defaults
+}
+
+private func makeInstance(name: String? = nil, host: String = "example.com", storage: KeyStorage = .local) -> ServerInstance {
+    ServerInstance(name: name, baseURL: URL(string: "https://\(host)")!, keyStorage: storage)
+}
+
+@MainActor
+struct InstanceStoreTests {
+    @Test("First added instance becomes active and its key lands in the keychain")
+    func addFirstInstanceActivates() async throws {
+        let keychain = FakeKeychain()
+        let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
+        let instance = makeInstance()
+
+        #expect(store.isEmpty)
+        #expect(store.add(instance, apiKey: "key-1"))
+
+        #expect(store.activeInstanceID == instance.id)
+        #expect(store.activeInstance == instance)
+        #expect(store.apiKey(for: instance.id) == "key-1")
+        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == false)
+    }
+
+    @Test("iCloud storage saves the key as synchronizable")
+    func iCloudStorageSetsSynchronizable() async throws {
+        let keychain = FakeKeychain()
+        let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
+        let instance = makeInstance(storage: .iCloud)
+
+        #expect(store.add(instance, apiKey: "key-icloud"))
+        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == true)
+    }
+
+    @Test("Changing storage on update rewrites the key with the new sync flag")
+    func updateFlipsSynchronizable() async throws {
+        let keychain = FakeKeychain()
+        let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
+        var instance = makeInstance(storage: .local)
+        #expect(store.add(instance, apiKey: "k"))
+        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == false)
+
+        instance.keyStorage = .iCloud
+        #expect(store.update(instance, apiKey: "k"))
+        #expect(keychain.entry(account: instance.id.uuidString)?.synchronizable == true)
+    }
+
+    @Test("Removing the active instance promotes the next and deletes the key")
+    func removeActivePromotesNext() async throws {
+        let keychain = FakeKeychain()
+        let store = InstanceStore(defaults: makeDefaults(), keychain: keychain)
+        let first = makeInstance(host: "one.example.com")
+        let second = makeInstance(host: "two.example.com")
+        #expect(store.add(first, apiKey: "k1"))
+        #expect(store.add(second, apiKey: "k2"))
+        #expect(store.activeInstanceID == first.id)
+
+        store.remove(first.id)
+        #expect(store.activeInstanceID == second.id)
+        #expect(store.apiKey(for: first.id) == nil)
+        #expect(store.instances.count == 1)
+    }
+
+    @Test("Removing the last instance clears the active selection")
+    func removeLastDeactivates() async throws {
+        let store = InstanceStore(defaults: makeDefaults(), keychain: FakeKeychain())
+        let only = makeInstance()
+        #expect(store.add(only, apiKey: "k"))
+        store.remove(only.id)
+        #expect(store.isEmpty)
+        #expect(store.activeInstanceID == nil)
+    }
+
+    @Test("Instances and active id persist across store reloads")
+    func persistsAcrossReloads() async throws {
+        let defaults = makeDefaults()
+        let keychain = FakeKeychain()
+        let first = makeInstance(host: "one.example.com")
+        let second = makeInstance(host: "two.example.com")
+        do {
+            let store = InstanceStore(defaults: defaults, keychain: keychain)
+            #expect(store.add(first, apiKey: "k1"))
+            #expect(store.add(second, apiKey: "k2"))
+            store.setActive(second.id)
+        }
+        // A fresh store reading the same defaults sees the same state.
+        let reloaded = InstanceStore(defaults: defaults, keychain: keychain)
+        #expect(reloaded.instances.map(\.id) == [first.id, second.id])
+        #expect(reloaded.activeInstanceID == second.id)
+    }
+}
+
+struct ServerURLNormalizerTests {
+    @Test("Adds https when no scheme is present")
+    func addsScheme() {
+        #expect(ServerURLNormalizer.normalize("go.ahodge.de")?.absoluteString == "https://go.ahodge.de")
+    }
+
+    @Test("Strips a trailing slash and keeps an explicit scheme")
+    func stripsTrailingSlashKeepsScheme() {
+        #expect(ServerURLNormalizer.normalize("http://localhost:8080/")?.absoluteString == "http://localhost:8080")
+    }
+
+    @Test("Trims surrounding whitespace")
+    func trimsWhitespace() {
+        #expect(ServerURLNormalizer.normalize("  https://go.ahodge.de  ")?.absoluteString == "https://go.ahodge.de")
+    }
+
+    @Test("Rejects empty or host-less input")
+    func rejectsInvalid() {
+        #expect(ServerURLNormalizer.normalize("") == nil)
+        #expect(ServerURLNormalizer.normalize("   ") == nil)
+    }
+
+    @Test("restRoot appends the versioned REST path to the server root")
+    func restRootAppendsPath() {
+        let instance = ServerInstance(baseURL: URL(string: "https://go.ahodge.de")!)
+        #expect(instance.restRoot.absoluteString == "https://go.ahodge.de/rest/v3/")
+    }
+
+    @Test("displayName falls back to the host when no name is set")
+    func displayNameFallsBackToHost() {
+        let unnamed = ServerInstance(baseURL: URL(string: "https://go.ahodge.de")!)
+        #expect(unnamed.displayName == "go.ahodge.de")
+        let named = ServerInstance(name: "My Shlink", baseURL: URL(string: "https://go.ahodge.de")!)
+        #expect(named.displayName == "My Shlink")
+    }
+}
