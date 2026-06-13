@@ -126,6 +126,14 @@ public final class ServerFormModel {
         return nil
     }
 
+    /// Surfaces a failure that happened *after* a successful probe — saving the
+    /// validated server to the Keychain failed. Replaces the green confirmation
+    /// with a red error so the user stays on the form instead of advancing.
+    public func reportSaveFailure(_ message: String) {
+        successMessage = nil
+        errorMessage = message
+    }
+
     // MARK: Helpers
 
     private static let unreachableMessage =

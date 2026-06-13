@@ -16,20 +16,26 @@ import ShlinklyCore
 /// reacts to ``onConnected`` by saving and dismissing/advancing.
 struct ServerFormView: View {
     @State private var model: ServerFormModel
-    /// Called after the green confirmation with the validated instance + key.
-    private let onConnected: (ServerInstance, String) -> Void
+    /// Called after the green confirmation with the validated instance + key. It
+    /// performs the actual save and may **throw** — saving the key to the
+    /// Keychain can fail (notably on macOS without the Keychain Sharing
+    /// capability), in which case the form stays put and shows the error.
+    private let onConnected: (ServerInstance, String) throws -> Void
     /// When set (edit mode), a destructive "Remove Server" button is shown; the
     /// host removes the instance and dismisses. Gives macOS — where Settings has
     /// no swipe — a way to delete a server, and works on iOS too.
     private let onRemove: (() -> Void)?
 
     @State private var showRemoveConfirm = false
+    /// The Keychain-save failure to show in an alert, or `nil`. Set when
+    /// ``onConnected`` throws so the user sees *why* connecting didn't complete.
+    @State private var saveErrorMessage: String?
 
     init(
         mode: ServerFormModel.Mode,
         existingKey: String = "",
         onRemove: (() -> Void)? = nil,
-        onConnected: @escaping (ServerInstance, String) -> Void
+        onConnected: @escaping (ServerInstance, String) throws -> Void
     ) {
         _model = State(initialValue: ServerFormModel(mode: mode, existingKey: existingKey))
         self.onRemove = onRemove
@@ -106,6 +112,18 @@ struct ServerFormView: View {
         } message: {
             Text("Its API key will be removed from this device. The links on the server itself aren't affected.")
         }
+        .alert("Couldn't save the server", isPresented: saveErrorBinding) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            if let saveErrorMessage {
+                Text(saveErrorMessage)
+            }
+        }
+    }
+
+    /// Drives the save-failure alert; clears the message when dismissed.
+    private var saveErrorBinding: Binding<Bool> {
+        Binding(get: { saveErrorMessage != nil }, set: { if !$0 { saveErrorMessage = nil } })
     }
 
     /// Edit-only destructive action to delete this server (no swipe needed).
@@ -175,7 +193,7 @@ struct ServerFormView: View {
     private var storageCaption: String {
         switch model.keyStorage {
         case .local:
-            return "Stored only on this device. Add the server again on your other devices."
+            return "Stored only on this device — it won't sync. Add this server separately on each of your devices."
         case .iCloud:
             return "Synced across your devices via iCloud Keychain — end-to-end encrypted by Apple. We never see it."
         }
@@ -187,7 +205,22 @@ struct ServerFormView: View {
             // Let the green "Connected — N links found" line register before the
             // host swaps the screen (onboarding → list) or closes the sheet.
             try? await Task.sleep(for: .seconds(0.5))
-            onConnected(validated.instance, validated.apiKey)
+            do {
+                // Only the host's save can advance the flow. If it throws (the key
+                // didn't reach the Keychain), stay on the form and show why.
+                try onConnected(validated.instance, validated.apiKey)
+            } catch let error as KeychainError {
+                surfaceSaveFailure(error.message)
+            } catch {
+                surfaceSaveFailure("Couldn't save the API key. The server wasn't added.")
+            }
         }
+    }
+
+    /// Replaces the green confirmation with a visible failure (red footer + an
+    /// alert) and keeps the user on the form — the host only advances on success.
+    private func surfaceSaveFailure(_ message: String) {
+        model.reportSaveFailure(message)
+        saveErrorMessage = message
     }
 }

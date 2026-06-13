@@ -177,7 +177,9 @@ struct SettingsView: View {
             switch route {
             case .add:
                 ServerFormView(mode: .add) { instance, key in
-                    appModel.addInstance(instance, apiKey: key)
+                    // On a save failure this throws *before* dismissing, so the
+                    // sheet stays open and the form shows the error.
+                    try appModel.addInstance(instance, apiKey: key)
                     formRoute = nil
                 }
                 .toolbar { cancelFormButton }
@@ -190,7 +192,7 @@ struct SettingsView: View {
                         appModel.removeInstance(instance.id)
                     }
                 ) { updated, key in
-                    appModel.updateInstance(updated, apiKey: key)
+                    try appModel.updateInstance(updated, apiKey: key)
                     formRoute = nil
                 }
                 .toolbar { cancelFormButton }

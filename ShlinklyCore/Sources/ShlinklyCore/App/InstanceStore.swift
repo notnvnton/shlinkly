@@ -64,29 +64,26 @@ public final class InstanceStore {
     // MARK: - Mutations
 
     /// Adds a new server and stores its key. Becomes active if it's the first
-    /// one. Returns `false` (and persists nothing) if the key couldn't be saved.
-    @discardableResult
-    public func add(_ instance: ServerInstance, apiKey: String) -> Bool {
-        guard saveKey(apiKey, for: instance) else { return false }
+    /// one. Throws (and persists nothing) if the key couldn't be saved, so the
+    /// caller can surface the failure instead of leaving a keyless server behind.
+    public func add(_ instance: ServerInstance, apiKey: String) throws {
+        try saveKey(apiKey, for: instance)
         instances.append(instance)
         if activeInstanceID == nil { activeInstanceID = instance.id }
         persist()
-        return true
     }
 
     /// Updates an existing server's details and rewrites its key (the rewrite
     /// also applies any `keyStorage` change, which can't be done in place).
-    /// Returns `false` if the key write failed.
-    @discardableResult
-    public func update(_ instance: ServerInstance, apiKey: String) -> Bool {
-        guard saveKey(apiKey, for: instance) else { return false }
+    /// Throws (and persists nothing) if the key write failed.
+    public func update(_ instance: ServerInstance, apiKey: String) throws {
+        try saveKey(apiKey, for: instance)
         if let index = instances.firstIndex(where: { $0.id == instance.id }) {
             instances[index] = instance
         } else {
             instances.append(instance)
         }
         persist()
-        return true
     }
 
     /// Removes a server and its key. If the active server is removed, the first
@@ -109,17 +106,12 @@ public final class InstanceStore {
 
     // MARK: - Persistence
 
-    private func saveKey(_ apiKey: String, for instance: ServerInstance) -> Bool {
-        do {
-            try keychain.save(
-                apiKey,
-                account: instance.id.uuidString,
-                synchronizable: instance.keyStorage == .iCloud
-            )
-            return true
-        } catch {
-            return false
-        }
+    private func saveKey(_ apiKey: String, for instance: ServerInstance) throws {
+        try keychain.save(
+            apiKey,
+            account: instance.id.uuidString,
+            synchronizable: instance.keyStorage == .iCloud
+        )
     }
 
     private func persist() {
