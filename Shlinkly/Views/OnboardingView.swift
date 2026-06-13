@@ -27,8 +27,7 @@ struct OnboardingView: View {
 }
 
 /// The Welcome screen: identity, the privacy promise, three reassurances, and the
-/// call to connect. The app icon isn't chosen yet, so a neutral placeholder
-/// stands in here rather than a final mark.
+/// call to connect. The app logo sits atop, clipped to an app-icon-style tile.
 private struct WelcomeScreen: View {
     let onConnect: () -> Void
 
@@ -36,7 +35,7 @@ private struct WelcomeScreen: View {
         ScrollView {
             VStack(spacing: 28) {
                 VStack(spacing: 16) {
-                    IconPlaceholder()
+                    AppLogoMark()
 
                     VStack(spacing: 6) {
                         Text("Shlinkly")
@@ -100,22 +99,15 @@ private struct WelcomeScreen: View {
     }
 }
 
-/// A neutral stand-in for the (not-yet-chosen) app icon. Deliberately not a final
-/// mark — a dashed rounded square with a generic glyph.
-private struct IconPlaceholder: View {
+/// The app logo atop the Welcome screen: the 1024 master scaled down and clipped
+/// to a continuous rounded rectangle so it reads like an app-icon tile.
+private struct AppLogoMark: View {
     var body: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(Color.secondary.opacity(0.12))
-            .frame(width: 96, height: 96)
-            .overlay(
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .strokeBorder(Color.secondary.opacity(0.35), style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-            )
-            .overlay(
-                Image(systemName: "link")
-                    .font(.system(size: 38, weight: .semibold))
-                    .foregroundStyle(.secondary)
-            )
+        Image("AppLogo")
+            .resizable()
+            .interpolation(.high)
+            .frame(width: 80, height: 80)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .accessibilityHidden(true)
     }
 }
