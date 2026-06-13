@@ -59,6 +59,9 @@ private struct ConfiguredRoot: View {
 
     #if os(macOS)
     @State private var selection: Route?
+    /// Guards the one-time first-launch auto-selection so clearing the detail
+    /// (after a delete or a tag filter) doesn't snap back to the first row.
+    @State private var didAutoSelectFirst = false
     #else
     @State private var path: [Route] = []
     #endif
@@ -74,14 +77,19 @@ private struct ConfiguredRoot: View {
         #if os(macOS)
         NavigationSplitView {
             TagSidebar(listStore: listStore, tagsStore: tagsStore)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } content: {
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, showSettings: $showSettings)
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360)
         } detail: {
             if let selection {
                 destination(selection)
             } else {
                 DetailPlaceholder()
             }
+        }
+        .onChange(of: listStore.items.first?.id) { _, _ in
+            autoSelectFirstIfNeeded()
         }
         #else
         NavigationStack(path: $path) {
@@ -133,6 +141,19 @@ private struct ConfiguredRoot: View {
         if !path.isEmpty { path.removeLast() }
         #endif
     }
+
+    #if os(macOS)
+    /// On the first macOS launch, selects the first link once the list loads so
+    /// the detail column isn't left empty. Fires only once (`didAutoSelectFirst`)
+    /// and never overrides an existing selection.
+    private func autoSelectFirstIfNeeded() {
+        guard !didAutoSelectFirst,
+              selection == nil,
+              let first = listStore.items.first else { return }
+        didAutoSelectFirst = true
+        selection = .shortURLDetail(first)
+    }
+    #endif
 }
 
 #if os(macOS)
@@ -171,7 +192,6 @@ private struct TagSidebar: View {
             }
         }
         .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
-        .frame(minWidth: 200)
         .task { tagsStore.loadIfNeeded() }
     }
 

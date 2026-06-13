@@ -283,12 +283,12 @@ struct ShortURLListScreen: View {
         #if os(macOS)
         List(selection: $selection) {
             ForEach(store.items) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    ShortURLRow(shortURL: item)
-                    if !item.tags.isEmpty {
-                        RowTags(tags: item.tags) { store.setActiveTag($0) }
-                    }
-                }
+                HoverableLinkRow(
+                    shortURL: item,
+                    onEdit: { formRoute = .edit(item) },
+                    onDelete: { requestSingleDelete(item) },
+                    onSelectTag: { store.setActiveTag($0) }
+                )
                 .tag(Route.shortURLDetail(item))
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
                 .contextMenu {
@@ -588,6 +588,68 @@ private struct RowTags: View {
     private var visibleTags: [String] { Array(tags.prefix(maxVisible)) }
     private var overflow: Int { max(0, tags.count - maxVisible) }
 }
+
+// MARK: - Hover-reveal row actions (macOS)
+
+#if os(macOS)
+/// A macOS list row that reveals trailing **Edit** and **Delete** buttons when
+/// the cursor is over it. Unlike a swipe (undiscoverable, non-native on the
+/// Mac), the buttons advertise themselves on hover: they stay laid out but fully
+/// transparent at rest and fade in/out with `.onHover`. Delete routes through the
+/// same central confirmation alert as the context menu — it never deletes
+/// silently. Row selection (a plain tap) and the context menu are unaffected:
+/// the buttons capture their own clicks, and the transparent overlay ignores
+/// hit-testing while hidden so a click anywhere else still selects the row.
+private struct HoverableLinkRow: View {
+    let shortURL: ShortURL
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onSelectTag: (String) -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ShortURLRow(shortURL: shortURL)
+            if !shortURL.tags.isEmpty {
+                RowTags(tags: shortURL.tags, onSelectTag: onSelectTag)
+            }
+        }
+        .overlay(alignment: .trailing) {
+            hoverActions
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
+        }
+        .onHover { hovering in
+            withAnimation(.easeInOut(duration: 0.15)) {
+                isHovering = hovering
+            }
+        }
+    }
+
+    /// The floating Edit/Delete pair shown over the row's trailing edge. A
+    /// material backing lets it sit legibly above the visit-count badge.
+    private var hoverActions: some View {
+        HStack(spacing: 2) {
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .frame(width: 22, height: 22)
+            }
+            .help("Edit")
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .frame(width: 22, height: 22)
+            }
+            .help("Delete")
+        }
+        .buttonStyle(.borderless)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 3)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
+        .padding(.trailing, 2)
+    }
+}
+#endif
 
 // MARK: - Filter pill
 
