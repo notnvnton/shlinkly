@@ -21,16 +21,37 @@ struct DetailScreen: View {
     @State private var didInitialLoad = false
     @State private var didCopy = false
     @State private var copyResetTask: Task<Void, Never>?
+    @State private var isEditing = false
+    @State private var pendingDelete: ShortURL?
+    @State private var deleteError: String?
     @Environment(\.openURL) private var openURL
 
+    /// The active server's client and the shared tag cache, threaded so the edit
+    /// form can submit and offer tag suggestions.
+    private let client: ShlinkClient
+    private let listStore: ShortURLListStore
+    private let tagsStore: TagsStore
     /// Applies a tag as the shared list filter and returns to the list. Wired
     /// upstream so it can both set the filter and drive navigation (iOS pops,
     /// macOS clears the detail selection).
     private let onSelectTag: (String) -> Void
+    /// Called after the link is deleted so the navigation returns to the list.
+    private let onDeleted: () -> Void
 
-    init(shortURL: ShortURL, client: ShlinkClient, onSelectTag: @escaping (String) -> Void) {
+    init(
+        shortURL: ShortURL,
+        client: ShlinkClient,
+        listStore: ShortURLListStore,
+        tagsStore: TagsStore,
+        onSelectTag: @escaping (String) -> Void,
+        onDeleted: @escaping () -> Void
+    ) {
         _store = State(initialValue: ShortURLDetailStore(shortURL: shortURL, client: client))
+        self.client = client
+        self.listStore = listStore
+        self.tagsStore = tagsStore
         self.onSelectTag = onSelectTag
+        self.onDeleted = onDeleted
     }
 
     private var shortURL: ShortURL { store.shortURL }
@@ -60,11 +81,66 @@ struct DetailScreen: View {
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
+        .toolbar { detailToolbar }
+        .sheet(isPresented: $isEditing) {
+            ShortURLFormView(mode: .edit(store.shortURL), client: client, tagsStore: tagsStore) { updated in
+                // Refresh both the detail in place and the row behind it.
+                store.apply(updated)
+                listStore.applyUpdated(updated)
+            }
+        }
+        .shortURLDeleteConfirmation(item: $pendingDelete) { url in
+            Task { await runDelete(url) }
+        }
+        .alert("Couldn't delete link", isPresented: deleteErrorBinding, presenting: deleteError) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
         .task {
             guard !didInitialLoad else { return }
             didInitialLoad = true
             store.load()
         }
+    }
+
+    // MARK: - Toolbar & actions
+
+    @ToolbarContentBuilder
+    private var detailToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Menu {
+                Button {
+                    isEditing = true
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                Button(role: .destructive) {
+                    pendingDelete = store.shortURL
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            } label: {
+                Label("Actions", systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    /// Deletes the link via the shared list store (which removes the row), then
+    /// navigates back on success or surfaces a message otherwise.
+    private func runDelete(_ url: ShortURL) async {
+        switch await listStore.delete(shortCode: url.shortCode, domain: url.domain) {
+        case .deleted:
+            onDeleted()
+        case .forbidden(let threshold):
+            deleteError = ShlinkError.userFacingMessage(for: ShlinkError.deletionForbidden(threshold: threshold))
+        case .failed(let message):
+            deleteError = message
+        }
+    }
+
+    private var deleteErrorBinding: Binding<Bool> {
+        Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })
     }
 
     // MARK: - Header
@@ -371,48 +447,6 @@ private struct TagChipsView: View {
             ForEach(tags, id: \.self) { tag in
                 TagChip(text: tag) { onSelectTag(tag) }
             }
-        }
-    }
-}
-
-/// A simple left-to-right wrapping layout for chips.
-private struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let maxWidth = proposal.width ?? .infinity
-        var x: CGFloat = 0
-        var y: CGFloat = 0
-        var rowHeight: CGFloat = 0
-        var widest: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > 0, x + size.width > maxWidth {
-                x = 0
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
-            widest = max(widest, x - spacing)
-        }
-        return CGSize(width: min(widest, maxWidth), height: y + rowHeight)
-    }
-
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        var x = bounds.minX
-        var y = bounds.minY
-        var rowHeight: CGFloat = 0
-        for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
-            if x > bounds.minX, x + size.width > bounds.maxX {
-                x = bounds.minX
-                y += rowHeight + spacing
-                rowHeight = 0
-            }
-            subview.place(at: CGPoint(x: x, y: y), anchor: .topLeading, proposal: ProposedViewSize(size))
-            x += size.width + spacing
-            rowHeight = max(rowHeight, size.height)
         }
     }
 }
