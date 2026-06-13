@@ -25,11 +25,19 @@ public final class AppModel {
     /// sync.
     public let instanceStore: InstanceStore
 
+    /// App-wide preferences (the delete-confirmation switches).
+    public let preferences: AppPreferences
+
     /// Session used for every client this model vends. Injected for testability.
     private let urlSession: URLSession
 
-    public init(instanceStore: InstanceStore = InstanceStore(), urlSession: URLSession = .shared) {
+    public init(
+        instanceStore: InstanceStore = InstanceStore(),
+        preferences: AppPreferences = AppPreferences(),
+        urlSession: URLSession = .shared
+    ) {
         self.instanceStore = instanceStore
+        self.preferences = preferences
         self.urlSession = urlSession
     }
 
@@ -64,11 +72,15 @@ public final class AppModel {
 
     // MARK: - Server management
 
-    /// Adds a server, makes it active, and brings it online.
+    /// Adds a server. The first one becomes active and comes online (leaving
+    /// onboarding); a server added alongside others is left for the user to
+    /// switch to deliberately, so the current session isn't disrupted.
     public func addInstance(_ instance: ServerInstance, apiKey: String) {
+        let hadActiveServer = activeInstance != nil
         guard instanceStore.add(instance, apiKey: apiKey) else { return }
-        instanceStore.setActive(instance.id)
-        activate(instance, apiKey: apiKey)
+        if !hadActiveServer {
+            activate(instance, apiKey: apiKey)
+        }
     }
 
     /// Saves edits to a server. If the edited server is the active one, its
