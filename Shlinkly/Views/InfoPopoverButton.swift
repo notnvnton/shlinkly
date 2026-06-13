@@ -13,9 +13,21 @@ import SwiftUI
 /// use is beside the query-forwarding toggle in the short-URL form.
 struct InfoPopoverButton: View {
     let title: String
+    /// Markdown source. `**bold**` and `` `code` `` are rendered; blank lines
+    /// separate paragraphs.
     let message: String
 
     @State private var isPresented = false
+
+    /// `message` parsed as markdown with whitespace (including the paragraph
+    /// breaks) preserved, so inline emphasis renders without collapsing the
+    /// newlines. Falls back to the raw string if parsing ever fails.
+    private var attributedMessage: AttributedString {
+        (try? AttributedString(
+            markdown: message,
+            options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )) ?? AttributedString(message)
+    }
 
     var body: some View {
         Button {
@@ -30,7 +42,7 @@ struct InfoPopoverButton: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text(title)
                     .font(.headline)
-                Text(message)
+                Text(attributedMessage)
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -41,7 +53,8 @@ struct InfoPopoverButton: View {
             .presentationCompactAdaptation(.popover)
         }
         #if os(macOS)
-        .help(message)
+        // Tooltips don't render markdown; show the plain text without the markers.
+        .help(String(attributedMessage.characters))
         #endif
     }
 }
