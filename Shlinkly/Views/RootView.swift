@@ -55,7 +55,7 @@ private struct ConfiguredRoot: View {
         NavigationSplitView {
             TagSidebar(listStore: listStore, tagsStore: tagsStore)
         } content: {
-            ShortURLListScreen(store: listStore, tagsStore: tagsStore, selection: $selection)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection)
         } detail: {
             if let selection {
                 destination(selection)
@@ -65,7 +65,7 @@ private struct ConfiguredRoot: View {
         }
         #else
         NavigationStack(path: $path) {
-            ShortURLListScreen(store: listStore, tagsStore: tagsStore)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client)
                 .navigationDestination(for: Route.self) { route in
                     destination(route)
                 }
@@ -80,8 +80,15 @@ private struct ConfiguredRoot: View {
     private func destination(_ route: Route) -> some View {
         switch route {
         case .shortURLDetail(let shortURL):
-            DetailScreen(shortURL: shortURL, client: client, onSelectTag: applyTagFilter)
-                .id(shortURL.id)
+            DetailScreen(
+                shortURL: shortURL,
+                client: client,
+                listStore: listStore,
+                tagsStore: tagsStore,
+                onSelectTag: applyTagFilter,
+                onDeleted: dismissDetail
+            )
+            .id(shortURL.id)
         }
     }
 
@@ -94,6 +101,16 @@ private struct ConfiguredRoot: View {
         selection = nil
         #else
         path.removeAll()
+        #endif
+    }
+
+    /// Returns from the detail screen after its link is deleted: iOS pops the
+    /// stack, macOS clears the detail selection so the placeholder shows.
+    private func dismissDetail() {
+        #if os(macOS)
+        selection = nil
+        #else
+        if !path.isEmpty { path.removeLast() }
         #endif
     }
 }

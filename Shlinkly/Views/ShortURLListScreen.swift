@@ -14,26 +14,58 @@ struct ShortURLListScreen: View {
     /// The list store is owned upstream (in `RootView`) so the detail screen can
     /// share its filter state. This screen only reads and drives it.
     private let store: ShortURLListStore
-    /// Shared tag cache, used for the iPhone search suggestions.
+    /// Shared tag cache, used for the iPhone search suggestions and the form's
+    /// tag editor.
     private let tagsStore: TagsStore
+    /// The active server's client, needed to build the create/edit form.
+    private let client: ShlinkClient
     @State private var didInitialLoad = false
+    /// The create/edit sheet, or `nil` when none is shown.
+    @State private var formRoute: FormRoute?
+    /// The link awaiting delete confirmation.
+    @State private var pendingDelete: ShortURL?
+    /// A delete failure message to surface in an alert.
+    @State private var deleteError: String?
 
     #if os(macOS)
     /// Drives the detail column of the split view. macOS selects on tap; iOS
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
 
-    init(store: ShortURLListStore, tagsStore: TagsStore, selection: Binding<Route?>) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>) {
         self.store = store
         self.tagsStore = tagsStore
+        self.client = client
         _selection = selection
     }
     #else
-    init(store: ShortURLListStore, tagsStore: TagsStore) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient) {
         self.store = store
         self.tagsStore = tagsStore
+        self.client = client
     }
     #endif
+
+    /// Identifies which form to present so `.sheet(item:)` can rebuild content
+    /// per presentation. Create is a singleton; edit carries the target link.
+    private enum FormRoute: Identifiable {
+        case create
+        case edit(ShortURL)
+
+        var id: String {
+            switch self {
+            case .create: return "create"
+            case .edit(let url): return "edit-\(url.id)"
+            }
+        }
+
+        var mode: ShortURLFormModel.Mode {
+            switch self {
+            case .create: return .create
+            case .edit(let url): return .edit(url)
+            }
+        }
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -44,14 +76,80 @@ struct ShortURLListScreen: View {
         }
         .navigationTitle("Links")
         .toolbar { sortToolbar }
+        .toolbar { addToolbar }
         .searchable(text: searchBinding, prompt: Text("Search links"))
         .tagSearchSuggestions(tagSuggestions) { store.applyTagFromSearch($0) }
+        .sheet(item: $formRoute) { route in
+            ShortURLFormView(mode: route.mode, client: client, tagsStore: tagsStore) { result in
+                switch route {
+                case .create: store.insertCreated(result)
+                case .edit: store.applyUpdated(result)
+                }
+            }
+        }
+        .shortURLDeleteConfirmation(item: $pendingDelete) { url in
+            Task { await runDelete(url) }
+        }
+        .alert("Couldn't delete link", isPresented: deleteErrorBinding, presenting: deleteError) { _ in
+            Button("OK", role: .cancel) {}
+        } message: { message in
+            Text(message)
+        }
         .task {
             tagsStore.loadIfNeeded()
             guard !didInitialLoad else { return }
             didInitialLoad = true
             store.loadFirstPage()
         }
+    }
+
+    /// Runs the delete and surfaces a message on the non-success outcomes; the
+    /// store removes the row itself on success.
+    private func runDelete(_ url: ShortURL) async {
+        switch await store.delete(shortCode: url.shortCode, domain: url.domain) {
+        case .deleted:
+            break
+        case .forbidden(let threshold):
+            deleteError = ShlinkError.userFacingMessage(for: ShlinkError.deletionForbidden(threshold: threshold))
+        case .failed(let message):
+            deleteError = message
+        }
+    }
+
+    private var deleteErrorBinding: Binding<Bool> {
+        Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })
+    }
+
+    // MARK: - Row actions
+
+    private func editButton(_ item: ShortURL) -> some View {
+        Button {
+            formRoute = .edit(item)
+        } label: {
+            Label("Edit", systemImage: "pencil")
+        }
+    }
+
+    private func deleteButton(_ item: ShortURL) -> some View {
+        Button(role: .destructive) {
+            pendingDelete = item
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+    }
+
+    /// The swipe-action delete: red-tinted but *not* `.destructive` role. A
+    /// destructive swipe button makes the List animate the row out on tap,
+    /// expecting the data source to shrink immediately — but we defer the actual
+    /// delete to a confirmation dialog, so the row must stay until confirmed.
+    /// Using a tint instead of the role avoids the count-mismatch crash.
+    private func swipeDeleteButton(_ item: ShortURL) -> some View {
+        Button {
+            pendingDelete = item
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+        .tint(.red)
     }
 
     /// Tags matching the current search text, surfaced as suggestions while the
@@ -91,6 +189,11 @@ struct ShortURLListScreen: View {
                 }
                 .tag(Route.shortURLDetail(item))
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
+                .contextMenu {
+                    editButton(item)
+                    Divider()
+                    deleteButton(item)
+                }
             }
 
             if store.state == .loadingMore {
@@ -114,6 +217,15 @@ struct ShortURLListScreen: View {
                     }
                 }
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    swipeDeleteButton(item)
+                    editButton(item).tint(.blue)
+                }
+                .contextMenu {
+                    editButton(item)
+                    Divider()
+                    deleteButton(item)
+                }
             }
 
             if store.state == .loadingMore {
@@ -160,7 +272,7 @@ struct ShortURLListScreen: View {
         } actions: {
             if !filterActive {
                 Button {
-                    // TODO: present the create screen (later layer).
+                    formRoute = .create
                 } label: {
                     Label("Create First Link", systemImage: "plus")
                 }
@@ -198,6 +310,18 @@ struct ShortURLListScreen: View {
                 }
             } label: {
                 Label("Sort", systemImage: "arrow.up.arrow.down")
+            }
+        }
+    }
+
+    /// The "+" that opens the create form, sitting alongside the sort control.
+    @ToolbarContentBuilder
+    private var addToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                formRoute = .create
+            } label: {
+                Label("New Link", systemImage: "plus")
             }
         }
     }
