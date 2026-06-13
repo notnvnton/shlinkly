@@ -14,12 +14,8 @@ struct RootView: View {
 
     var body: some View {
         if appModel.needsOnboarding {
-            // No servers configured yet — real onboarding arrives in step 2.
-            ContentUnavailableView(
-                "No server configured",
-                systemImage: "server.rack",
-                description: Text("Add a Shlink server to get started.")
-            )
+            // No servers configured yet — walk the user through connecting one.
+            OnboardingView()
         } else if let client = appModel.client {
             // Identity-keyed so a re-activated server (new client) rebuilds the
             // shared list store rather than reusing the old one.
