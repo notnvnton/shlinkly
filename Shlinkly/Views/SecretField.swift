@@ -29,6 +29,9 @@ struct SecretField: View {
             #if os(iOS)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
+            // Best-effort: marking the field as a one-time code stops iOS from
+            // offering to save the API key into Passwords ("Save Password?").
+            .textContentType(.oneTimeCode)
             #endif
 
             Button {
