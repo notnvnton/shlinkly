@@ -31,6 +31,12 @@ struct ServerFormView: View {
     /// ``onConnected`` throws so the user sees *why* connecting didn't complete.
     @State private var saveErrorMessage: String?
 
+    /// Which text field holds focus, so the iOS keyboard's "Done" can dismiss it.
+    /// Present on both platforms (focus is cross-platform); only the keyboard
+    /// toolbar that clears it is iOS-only, so macOS layout is unaffected.
+    @FocusState private var focusedField: Field?
+    private enum Field: Hashable { case name, url, key }
+
     init(
         mode: ServerFormModel.Mode,
         existingKey: String = "",
@@ -58,11 +64,13 @@ struct ServerFormView: View {
                 // spans full width with the placeholder inside, matching iOS.
                 TextField("Name", text: $model.name, prompt: Text("My Shlink (optional)"))
                     .labelsHidden()
+                    .focused($focusedField, equals: .name)
             }
 
             Section("Server URL") {
                 TextField("Server URL", text: $model.urlText, prompt: Text("https://shlink.example.com"))
                     .labelsHidden()
+                    .focused($focusedField, equals: .url)
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -71,7 +79,7 @@ struct ServerFormView: View {
             }
 
             Section {
-                SecretField(placeholder: "API key", text: $model.apiKey)
+                SecretField(placeholder: "API key", text: $model.apiKey, focus: $focusedField, focusValue: .key)
             } header: {
                 HStack(spacing: 6) {
                     Text("API key")
@@ -101,6 +109,13 @@ struct ServerFormView: View {
         .navigationTitle(model.isEdit ? "Edit Server" : "Connect server")
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        .scrollDismissesKeyboard(.interactively)
+        .toolbar {
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+            }
+        }
         #endif
         #if os(macOS)
         .formStyle(.grouped)

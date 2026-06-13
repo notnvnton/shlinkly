@@ -9,9 +9,18 @@ import SwiftUI
 /// default (dots via `SecureField`); the trailing eye reveals the value as a
 /// plain `TextField`. Autocapitalisation and autocorrection are off so keys
 /// aren't mangled.
-struct SecretField: View {
+///
+/// Takes the host form's focus binding so the key field participates in the
+/// shared `@FocusState` — that lets the iOS keyboard's "Done" button dismiss the
+/// keyboard while the key is being edited, same as the other fields. Harmless on
+/// macOS (focus exists there too; the keyboard toolbar is iOS-only).
+struct SecretField<FocusValue: Hashable>: View {
     let placeholder: String
     @Binding var text: String
+    /// The host's focus state, projected in (e.g. `$focusedField`).
+    let focus: FocusState<FocusValue?>.Binding
+    /// The focus case identifying this field within the host form.
+    let focusValue: FocusValue
     @State private var isRevealed = false
 
     var body: some View {
@@ -26,6 +35,7 @@ struct SecretField: View {
             // Hide the label so macOS Form doesn't add a left label column; the
             // prompt is the in-field placeholder.
             .labelsHidden()
+            .focused(focus, equals: focusValue)
             #if os(iOS)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()
