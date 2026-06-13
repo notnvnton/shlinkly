@@ -46,6 +46,20 @@ struct ShortURLFormView: View {
     Off: visitors reach the same page, without the extra parameters.
     """
 
+    /// Explanation shown in the info popover beside the Visit limit toggle.
+    private static let visitLimitHelp = """
+    Caps how many times this link can be opened. **Off = unlimited.**
+    When the limit is reached, the link **stops redirecting** — visitors get a "not found" page (unless your server has a fallback redirect set). The link stays in your list; it isn't deleted.
+    Handy for one-time links or limited campaigns.
+    """
+
+    /// Explanation shown in the info popover beside the robots.txt toggle.
+    private static let robotsHelp = """
+    Controls whether search engines (Google, etc.) may crawl this short link.
+    **Off (default):** crawlers are asked not to follow it — keeps bots from inflating your visit stats and keeps the link out of search results.
+    **On:** search engines may index and follow it.
+    """
+
     var body: some View {
         @Bindable var model = model
         NavigationStack {
@@ -170,7 +184,12 @@ struct ShortURLFormView: View {
                 }
 
                 VStack(alignment: .leading, spacing: 6) {
-                    Toggle("Visit limit", isOn: $model.limitsVisits)
+                    ToggleRowWithInfo(
+                        title: "Visit limit",
+                        isOn: $model.limitsVisits,
+                        infoTitle: "Visit limit",
+                        infoMessage: Self.visitLimitHelp
+                    )
                     if model.limitsVisits {
                         TextField("e.g. 100", text: $model.maxVisitsText)
                             #if os(iOS)
@@ -184,15 +203,19 @@ struct ShortURLFormView: View {
                     }
                 }
 
-                Toggle("Allow in robots.txt", isOn: $model.crawlable)
+                ToggleRowWithInfo(
+                    title: "Allow in robots.txt",
+                    isOn: $model.crawlable,
+                    infoTitle: "Allow in robots.txt",
+                    infoMessage: Self.robotsHelp
+                )
 
-                HStack(spacing: 6) {
-                    Text("Forward UTM tags & parameters")
-                    InfoPopoverButton(title: "Parameter forwarding", message: Self.forwardQueryHelp)
-                    Spacer(minLength: 8)
-                    Toggle("Forward UTM tags & parameters", isOn: $model.forwardQuery)
-                        .labelsHidden()
-                }
+                ToggleRowWithInfo(
+                    title: "Forward UTM tags & parameters",
+                    isOn: $model.forwardQuery,
+                    infoTitle: "Parameter forwarding",
+                    infoMessage: Self.forwardQueryHelp
+                )
             }
         } footer: {
             Text("Advanced options let you set dates, UTM tags, and a visit limit.")
@@ -296,6 +319,31 @@ private struct TagsField: View {
     private func commitDraft() {
         model.addTag(draft)
         draft = ""
+    }
+}
+
+// MARK: - Toggle row with info
+
+/// An advanced-options toggle row: a label, an info "?" button, and a trailing
+/// switch. The label and the "?" share an HStack aligned to the last text
+/// baseline, so when the label wraps to two lines the "?" sits beside the
+/// bottom line rather than floating in the vertical centre.
+private struct ToggleRowWithInfo: View {
+    let title: String
+    @Binding var isOn: Bool
+    let infoTitle: String
+    let infoMessage: String
+
+    var body: some View {
+        HStack {
+            HStack(alignment: .lastTextBaseline, spacing: 6) {
+                Text(title)
+                InfoPopoverButton(title: infoTitle, message: infoMessage)
+            }
+            Spacer(minLength: 8)
+            Toggle(title, isOn: $isOn)
+                .labelsHidden()
+        }
     }
 }
 
