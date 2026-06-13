@@ -5,9 +5,6 @@
 
 import SwiftUI
 import ShlinklyCore
-#if os(iOS)
-import UIKit
-#endif
 
 /// The short-URL detail screen: header, native link preview, tags, a period
 /// control, lifetime/period metric cards, a bot toggle and a per-day visits
@@ -19,8 +16,6 @@ import UIKit
 struct DetailScreen: View {
     @State private var store: ShortURLDetailStore
     @State private var didInitialLoad = false
-    @State private var didCopy = false
-    @State private var copyResetTask: Task<Void, Never>?
     @State private var isEditing = false
     @State private var pendingDelete: ShortURL?
     @State private var deleteError: String?
@@ -157,19 +152,7 @@ struct DetailScreen: View {
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.middle)
-                Button {
-                    copyShortURL()
-                } label: {
-                    Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
-                        .font(.subheadline)
-                        .foregroundStyle(didCopy ? Color.green : Color.accentColor)
-                        .contentTransition(.symbolEffect(.replace))
-                        // Fixed box so the doc → checkmark swap can't nudge layout.
-                        .frame(width: 22, height: 22)
-                }
-                .buttonStyle(.borderless)
-                .help("Copy short URL")
-                .accessibilityLabel(didCopy ? "Copied" : "Copy short URL")
+                CopyButton(value: shortURL.shortUrl, label: "Copy short URL")
             }
 
             if let destinationURL {
@@ -353,25 +336,6 @@ struct DetailScreen: View {
         case .last7Days: return "No visits in the last 7 days"
         case .last30Days: return "No visits in the last 30 days"
         case .allTime: return "No visits yet"
-        }
-    }
-
-    // MARK: - Actions
-
-    /// Copies the short URL and shows brief confirmation: the icon swaps to a
-    /// checkmark for ~1.2s, plus a light haptic on iOS. The copy itself is
-    /// unchanged.
-    private func copyShortURL() {
-        Clipboard.copy(shortURL.shortUrl)
-        #if os(iOS)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        #endif
-        withAnimation(.easeInOut(duration: 0.15)) { didCopy = true }
-        copyResetTask?.cancel()
-        copyResetTask = Task {
-            try? await Task.sleep(for: .seconds(1.2))
-            guard !Task.isCancelled else { return }
-            withAnimation(.easeInOut(duration: 0.2)) { didCopy = false }
         }
     }
 
