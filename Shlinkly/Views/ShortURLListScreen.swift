@@ -19,6 +19,9 @@ struct ShortURLListScreen: View {
     private let tagsStore: TagsStore
     /// The active server's client, needed to build the create/edit form.
     private let client: ShlinkClient
+    /// Drives the Settings sheet, owned by ``RootView`` so it survives a server
+    /// switch; the gear button toggles it.
+    @Binding private var showSettings: Bool
     @State private var didInitialLoad = false
     /// The create/edit sheet, or `nil` when none is shown.
     @State private var formRoute: FormRoute?
@@ -32,17 +35,19 @@ struct ShortURLListScreen: View {
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
 
-    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>, showSettings: Binding<Bool>) {
         self.store = store
         self.tagsStore = tagsStore
         self.client = client
         _selection = selection
+        _showSettings = showSettings
     }
     #else
-    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, showSettings: Binding<Bool>) {
         self.store = store
         self.tagsStore = tagsStore
         self.client = client
+        _showSettings = showSettings
     }
     #endif
 
@@ -75,6 +80,7 @@ struct ShortURLListScreen: View {
             content
         }
         .navigationTitle("Links")
+        .toolbar { settingsToolbar }
         .toolbar { sortToolbar }
         .toolbar { addToolbar }
         .searchable(text: searchBinding, prompt: Text("Search links"))
@@ -299,6 +305,28 @@ struct ShortURLListScreen: View {
     }
 
     // MARK: - Toolbar & bindings
+
+    /// The gear that opens Settings, pinned to the top-leading corner.
+    @ToolbarContentBuilder
+    private var settingsToolbar: some ToolbarContent {
+        #if os(iOS)
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        }
+        #else
+        ToolbarItem(placement: .navigation) {
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        }
+        #endif
+    }
 
     @ToolbarContentBuilder
     private var sortToolbar: some ToolbarContent {

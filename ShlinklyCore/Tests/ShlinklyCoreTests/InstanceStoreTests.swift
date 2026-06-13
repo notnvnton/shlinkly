@@ -125,6 +125,28 @@ struct InstanceStoreTests {
     }
 }
 
+@MainActor
+struct AppPreferencesTests {
+    @Test("Both delete-confirmation switches default to on when never set")
+    func defaultsAreOn() {
+        let prefs = AppPreferences(defaults: makeDefaults())
+        #expect(prefs.confirmBeforeDeletingOne)
+        #expect(prefs.confirmBeforeDeletingSeveral)
+    }
+
+    @Test("Switching a preference off persists across reloads")
+    func persistsAcrossReloads() {
+        let defaults = makeDefaults()
+        do {
+            let prefs = AppPreferences(defaults: defaults)
+            prefs.confirmBeforeDeletingOne = false
+        }
+        let reloaded = AppPreferences(defaults: defaults)
+        #expect(reloaded.confirmBeforeDeletingOne == false)
+        #expect(reloaded.confirmBeforeDeletingSeveral) // untouched → still on
+    }
+}
+
 struct ServerURLNormalizerTests {
     @Test("Adds https when no scheme is present")
     func addsScheme() {
