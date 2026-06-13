@@ -184,7 +184,11 @@ struct SettingsView: View {
             case .edit(let instance):
                 ServerFormView(
                     mode: .edit(instance),
-                    existingKey: appModel.instanceStore.apiKey(for: instance.id) ?? ""
+                    existingKey: appModel.instanceStore.apiKey(for: instance.id) ?? "",
+                    onRemove: {
+                        formRoute = nil
+                        appModel.removeInstance(instance.id)
+                    }
                 ) { updated, key in
                     appModel.updateInstance(updated, apiKey: key)
                     formRoute = nil
