@@ -26,20 +26,16 @@ public enum KeychainError: Error, Equatable {
 /// `service` is the bundle id and `account` is the instance's UUID, so each
 /// server's key is isolated.
 ///
-/// The two platforms use different keychains, chosen so an unsigned/ad-hoc dev
-/// build works without provisioning:
-/// - **iOS** uses the data-protection keychain: items are
-///   `kSecAttrAccessibleAfterFirstUnlock`, and an iCloud-stored key additionally
-///   sets `kSecAttrSynchronizable` so it syncs through the user's iCloud
-///   Keychain. Since synchronizability is fixed at creation,
-///   ``save(_:account:synchronizable:)`` deletes any prior item first; reads and
-///   deletes use `kSecAttrSynchronizableAny` to match either form.
-/// - **macOS** is sandboxed, so the default (file-based) keychain is redirected
-///   to the app's container — usable without a keychain-access-group entitlement
-///   (which would force a development certificate). The key is therefore stored
-///   locally regardless of the chosen storage; true iCloud-Keychain sync on the
-///   Mac needs the data-protection keychain, which a signed release build can opt
-///   into later.
+/// Both platforms use the **data-protection keychain** so an iCloud-stored key
+/// syncs across the user's devices through iCloud Keychain. Items are
+/// `kSecAttrAccessibleAfterFirstUnlock`; an iCloud key additionally sets
+/// `kSecAttrSynchronizable`. Since synchronizability is fixed at creation,
+/// ``save(_:account:synchronizable:)`` deletes any prior item first, and reads
+/// and deletes use `kSecAttrSynchronizableAny` to match either form.
+///
+/// On macOS this needs a keychain access group, which is provided automatically
+/// by the app's code signature (the target is signed with a team) — so no
+/// explicit `keychain-access-groups` entitlement is added.
 public struct KeychainStore: KeychainStoring {
     private let service: String
 
@@ -47,18 +43,16 @@ public struct KeychainStore: KeychainStoring {
         self.service = service
     }
 
-    /// Attributes common to every query: the generic-password class and the
-    /// service. iOS additionally pins the data-protection keychain.
+    /// Attributes common to every query: the generic-password class, the service,
+    /// and the data-protection keychain (the only one iOS has, and the one macOS
+    /// needs for iCloud-Keychain sync).
     private func baseQuery(account: String) -> [String: Any] {
-        var query: [String: Any] = [
+        [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
+            kSecUseDataProtectionKeychain as String: true,
         ]
-        #if os(iOS)
-        query[kSecUseDataProtectionKeychain as String] = true
-        #endif
-        return query
     }
 
     public func save(_ value: String, account: String, synchronizable: Bool) throws {
@@ -68,12 +62,10 @@ public struct KeychainStore: KeychainStoring {
 
         var query = baseQuery(account: account)
         query[kSecValueData as String] = Data(value.utf8)
-        #if os(iOS)
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         if synchronizable {
             query[kSecAttrSynchronizable as String] = kCFBooleanTrue!
         }
-        #endif
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError.unhandled(status) }
@@ -83,9 +75,7 @@ public struct KeychainStore: KeychainStoring {
         var query = baseQuery(account: account)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecReturnData as String] = true
-        #if os(iOS)
         query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-        #endif
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -95,9 +85,7 @@ public struct KeychainStore: KeychainStoring {
 
     public func delete(account: String) throws {
         var query = baseQuery(account: account)
-        #if os(iOS)
         query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
-        #endif
 
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
