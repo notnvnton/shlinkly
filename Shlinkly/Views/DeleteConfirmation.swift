@@ -22,6 +22,17 @@ extension View {
     ) -> some View {
         modifier(ShortURLDeleteConfirmation(item: item, onConfirm: onConfirm))
     }
+
+    /// Presents a centered confirmation for deleting `count` links at once.
+    /// Mirrors ``shortURLDeleteConfirmation(item:onConfirm:)`` but for the
+    /// multi-select batch — one alert for the whole set.
+    func shortURLGroupDeleteConfirmation(
+        count: Int,
+        isPresented: Binding<Bool>,
+        onConfirm: @escaping () -> Void
+    ) -> some View {
+        modifier(ShortURLGroupDeleteConfirmation(count: count, isPresented: isPresented, onConfirm: onConfirm))
+    }
 }
 
 private struct ShortURLDeleteConfirmation: ViewModifier {
@@ -45,10 +56,10 @@ private struct ShortURLDeleteConfirmation: ViewModifier {
         }
     }
 
-    /// "{title} (go.ahodge.de/{shortCode}) will be permanently deleted. This
-    /// can't be undone." — the title is dropped when empty, leaving just the
-    /// short URL. The host comes from the link's own `shortUrl` (scheme
-    /// stripped), so it's never hardcoded.
+    /// "{title} (go.ahodge.de/{shortCode}) and all its analytics will be
+    /// permanently deleted. This can't be undone." — the title is dropped when
+    /// empty, leaving just the short URL. The host comes from the link's own
+    /// `shortUrl` (scheme stripped), so it's never hardcoded.
     private static func message(for url: ShortURL) -> String {
         let display = url.shortUrl
             .replacingOccurrences(of: "https://", with: "")
@@ -59,6 +70,22 @@ private struct ShortURLDeleteConfirmation: ViewModifier {
         } else {
             target = display
         }
-        return "\(target) will be permanently deleted. This can't be undone."
+        return "\(target) and all its analytics will be permanently deleted. This can't be undone."
+    }
+}
+
+/// The batch counterpart: one alert covering several selected links.
+private struct ShortURLGroupDeleteConfirmation: ViewModifier {
+    let count: Int
+    @Binding var isPresented: Bool
+    let onConfirm: () -> Void
+
+    func body(content: Content) -> some View {
+        content.alert("Delete \(count) links?", isPresented: $isPresented) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) { onConfirm() }
+        } message: {
+            Text("All their analytics will be permanently deleted. This can't be undone.")
+        }
     }
 }

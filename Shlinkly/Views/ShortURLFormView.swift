@@ -24,14 +24,18 @@ struct ShortURLFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var appModel
     @State private var advancedExpanded = false
+    /// Set after a successful *create* to swap the form for the success screen
+    /// (edits dismiss straight away). `nil` while the form is showing.
+    @State private var createdURL: ShortURL?
 
     init(
         mode: ShortURLFormModel.Mode,
         client: ShlinkClient,
         tagsStore: TagsStore,
+        initialLongURL: String? = nil,
         onComplete: @escaping (ShortURL) -> Void
     ) {
-        _model = State(initialValue: ShortURLFormModel(mode: mode, client: client))
+        _model = State(initialValue: ShortURLFormModel(mode: mode, client: client, initialLongURL: initialLongURL))
         self.tagsStore = tagsStore
         self.onComplete = onComplete
     }
@@ -61,8 +65,17 @@ struct ShortURLFormView: View {
     """
 
     var body: some View {
+        if let createdURL {
+            // After a create, the form gives way to a focused success screen.
+            CreatedShortURLView(shortURL: createdURL) { dismiss() }
+        } else {
+            formBody
+        }
+    }
+
+    private var formBody: some View {
         @Bindable var model = model
-        NavigationStack {
+        return NavigationStack {
             Form {
                 if let submissionError = model.submissionError {
                     Section {
@@ -241,11 +254,19 @@ struct ShortURLFormView: View {
 
     private func submit() {
         Task {
-            if let result = await model.submit() {
-                onComplete(result)
+            guard let result = await model.submit() else {
+                // On failure the model surfaces the error inline; the sheet stays open.
+                return
+            }
+            // Update the list behind the sheet either way.
+            onComplete(result)
+            if model.isCreate {
+                // Copy the new short URL up front, then show the success screen.
+                Clipboard.copy(result.shortUrl)
+                createdURL = result
+            } else {
                 dismiss()
             }
-            // On failure the model surfaces the error inline; the sheet stays open.
         }
     }
 }
