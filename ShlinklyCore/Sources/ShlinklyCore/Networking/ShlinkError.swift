@@ -21,4 +21,13 @@ public enum ShlinkError: Error {
     case unauthorized
     /// HTTP 404 — the requested resource does not exist.
     case notFound
+    /// HTTP 400 `non-unique-slug` — the requested custom slug is already taken.
+    /// Carries the rejected slug (empty when the server didn't echo it back).
+    case slugInUse(slug: String)
+    /// HTTP 422 `invalid-short-url-deletion` — the server refuses to delete a
+    /// short URL whose visit count exceeds the configured `threshold`.
+    case deletionForbidden(threshold: Int)
+    /// HTTP 400 validation failure — carries the names of the fields the server
+    /// rejected (`invalidElements`).
+    case invalidData(elements: [String])
 }
