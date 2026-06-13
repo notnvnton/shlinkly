@@ -341,6 +341,7 @@ struct ShortURLListScreen: View {
             }
         }
         .listStyle(.plain)
+        .scrollDismissesKeyboard(.interactively)
         .environment(\.editMode, editModeBinding)
         .refreshable { await store.refresh() }
         .shortURLGroupDeleteConfirmation(count: selectedIDs.count, isPresented: $showGroupDeleteConfirm) {
