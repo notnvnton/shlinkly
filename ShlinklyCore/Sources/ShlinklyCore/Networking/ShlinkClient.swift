@@ -14,6 +14,7 @@ public actor ShlinkClient {
     private let apiKey: String
     private let urlSession: URLSession
     private let decoder: JSONDecoder
+    private let encoder: JSONEncoder
 
     /// - Parameters:
     ///   - baseURL: The versioned REST root, e.g. `https://example.com/rest/v3/`.
@@ -25,6 +26,7 @@ public actor ShlinkClient {
         self.apiKey = apiKey
         self.urlSession = urlSession
         self.decoder = ShlinkClient.makeDecoder()
+        self.encoder = JSONEncoder()
     }
 
     // MARK: - Endpoints
@@ -240,6 +242,59 @@ public actor ShlinkClient {
         let visits: Pagination<Visit>
     }
 
+    // MARK: - Writes
+
+    /// Creates a short URL via `POST /short-urls`.
+    ///
+    /// Per the spec the success status is **200** (not 201), returning the full
+    /// ``ShortURL``. A duplicate custom slug comes back as HTTP 400
+    /// `non-unique-slug` and is surfaced as ``ShlinkError/slugInUse(slug:)``.
+    public func createShortURL(_ body: CreateShortURLRequest) async throws -> ShortURL {
+        var request = try makeRequest(path: "short-urls", method: "POST")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        return try await send(request)
+    }
+
+    /// Updates a short URL via `PATCH /short-urls/{shortCode}`.
+    ///
+    /// Only the editable fields are sent (see ``EditShortURLRequest``); the short
+    /// code itself is immutable. `domain` selects a non-default domain when set.
+    /// Returns the updated ``ShortURL``.
+    public func updateShortURL(
+        shortCode: String,
+        domain: String? = nil,
+        _ body: EditShortURLRequest
+    ) async throws -> ShortURL {
+        var queryItems: [URLQueryItem] = []
+        if let domain {
+            queryItems.append(URLQueryItem(name: "domain", value: domain))
+        }
+        var request = try makeRequest(path: "short-urls/\(shortCode)", method: "PATCH", queryItems: queryItems)
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try encoder.encode(body)
+        return try await send(request)
+    }
+
+    /// Deletes a short URL via `DELETE /short-urls/{shortCode}` (HTTP 204).
+    ///
+    /// A 404 is treated as success — the link is already gone, which is the
+    /// caller's goal — so delete is idempotent. The server's
+    /// `invalid-short-url-deletion` guard (HTTP 422) propagates as
+    /// ``ShlinkError/deletionForbidden(threshold:)``.
+    public func deleteShortURL(shortCode: String, domain: String? = nil) async throws {
+        var queryItems: [URLQueryItem] = []
+        if let domain {
+            queryItems.append(URLQueryItem(name: "domain", value: domain))
+        }
+        let request = try makeRequest(path: "short-urls/\(shortCode)", method: "DELETE", queryItems: queryItems)
+        do {
+            try await sendNoContent(request)
+        } catch ShlinkError.notFound {
+            return
+        }
+    }
+
     // MARK: - Request building & transport
 
     /// Builds a request against `baseURL` with the standard Shlink headers.
@@ -293,13 +348,67 @@ public actor ShlinkClient {
         case 404:
             throw ShlinkError.notFound
         case 400...499:
-            // Other client errors should carry an RFC 7807 problem+json body.
+            // Other client errors should carry an RFC 7807 problem+json body,
+            // which we map onto a specific error where the `type` is known.
             if let problem = try? decoder.decode(ProblemDetails.self, from: data) {
-                throw ShlinkError.apiError(problem)
+                throw Self.mapProblem(problem)
             }
             throw ShlinkError.invalidResponse
         default:
             throw ShlinkError.invalidResponse
+        }
+    }
+
+    /// Executes a request that is expected to return no body (e.g. `DELETE` →
+    /// HTTP 204). Maps status codes onto ``ShlinkError`` the same way ``send(_:)``
+    /// does, but without decoding a success payload.
+    private func sendNoContent(_ request: URLRequest) async throws {
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await urlSession.data(for: request)
+        } catch {
+            throw ShlinkError.networkError(error)
+        }
+
+        guard let http = response as? HTTPURLResponse else {
+            throw ShlinkError.invalidResponse
+        }
+
+        switch http.statusCode {
+        case 200...299:
+            return
+        case 401:
+            throw ShlinkError.unauthorized
+        case 404:
+            throw ShlinkError.notFound
+        case 400...499:
+            if let problem = try? decoder.decode(ProblemDetails.self, from: data) {
+                throw Self.mapProblem(problem)
+            }
+            throw ShlinkError.invalidResponse
+        default:
+            throw ShlinkError.invalidResponse
+        }
+    }
+
+    /// Maps a decoded RFC 7807 problem onto the most specific ``ShlinkError``.
+    ///
+    /// Recognises the Shlink error `type` URIs the write endpoints can return
+    /// (verified against the v5.0.2 spec); anything else falls back to the
+    /// generic ``ShlinkError/apiError(_:)`` (or ``ShlinkError/invalidData(elements:)``
+    /// when the body lists rejected fields).
+    private static func mapProblem(_ problem: ProblemDetails) -> ShlinkError {
+        switch problem.type {
+        case "https://shlink.io/api/error/non-unique-slug":
+            return .slugInUse(slug: problem.customSlug ?? "")
+        case "https://shlink.io/api/error/invalid-short-url-deletion":
+            return .deletionForbidden(threshold: problem.threshold ?? 0)
+        default:
+            if let elements = problem.invalidElements, !elements.isEmpty {
+                return .invalidData(elements: elements)
+            }
+            return .apiError(problem)
         }
     }
 
