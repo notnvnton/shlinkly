@@ -97,8 +97,10 @@ public final class ShortURLDetailStore {
     // MARK: Observable state
 
     /// The short URL whose detail is shown. Its metadata (title, tags, summary)
-    /// is available immediately; only the visits are fetched.
-    public let shortURL: ShortURL
+    /// is available immediately; only the visits are fetched. Updated in place
+    /// after an edit via ``apply(_:)`` so the header, tags and preview refresh
+    /// without rebuilding the screen.
+    public private(set) var shortURL: ShortURL
     /// Current coarse state, drives which view the screen renders.
     public private(set) var state: ViewState = .loading
     /// The active period. Change via ``setPeriod(_:)`` so the visits reload.
@@ -161,6 +163,13 @@ public final class ShortURLDetailStore {
     /// action when a period has no visits but the link has lifetime visits.
     public func showAllTime() {
         setPeriod(.allTime)
+    }
+
+    /// Replaces the displayed short URL after an edit. The short code and
+    /// creation date are immutable, so the loaded visits and the window math stay
+    /// valid; only the metadata (title, tags, destination, validity, cap) changes.
+    public func apply(_ updated: ShortURL) {
+        shortURL = updated
     }
 
     // MARK: - Worker
