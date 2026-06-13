@@ -7,11 +7,15 @@ import SwiftUI
 import ShlinklyCore
 
 extension View {
-    /// Presents a destructive delete confirmation for the bound short URL,
-    /// invoking `onConfirm` when the user confirms. Uses a `confirmationDialog`
-    /// on iOS and a destructive alert on macOS, matching each platform's idiom.
-    /// Binding the presented item to `nil` (Cancel, or after confirming)
-    /// dismisses it.
+    /// Presents a centered destructive delete confirmation for the bound short
+    /// URL, invoking `onConfirm` only when the user taps Delete. Uses a plain
+    /// `.alert` on both platforms — deliberately NOT a row-anchored
+    /// `confirmationDialog`/`popover`, whose arrow could point at the wrong row
+    /// and invite deleting the wrong link. Binding the item to `nil` (Cancel, or
+    /// after confirming) dismisses it.
+    ///
+    /// Drive it from one `pendingDelete` state held at a stable level (the list
+    /// screen root and the detail screen), never per-row.
     func shortURLDeleteConfirmation(
         item: Binding<ShortURL?>,
         onConfirm: @escaping (ShortURL) -> Void
@@ -29,29 +33,32 @@ private struct ShortURLDeleteConfirmation: ViewModifier {
     }
 
     func body(content: Content) -> some View {
-        #if os(iOS)
-        content.confirmationDialog(
-            "Delete this link?",
-            isPresented: isPresented,
-            titleVisibility: .visible,
-            presenting: item
-        ) { url in
-            Button("Delete", role: .destructive) { onConfirm(url) }
-            Button("Cancel", role: .cancel) {}
-        } message: { url in
-            Text("\(url.shortUrl) will be permanently deleted.")
-        }
-        #else
         content.alert(
             "Delete this link?",
             isPresented: isPresented,
             presenting: item
         ) { url in
-            Button("Delete", role: .destructive) { onConfirm(url) }
             Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) { onConfirm(url) }
         } message: { url in
-            Text("\(url.shortUrl) will be permanently deleted.")
+            Text(Self.message(for: url))
         }
-        #endif
+    }
+
+    /// "{title} (go.ahodge.de/{shortCode}) will be permanently deleted. This
+    /// can't be undone." — the title is dropped when empty, leaving just the
+    /// short URL. The host comes from the link's own `shortUrl` (scheme
+    /// stripped), so it's never hardcoded.
+    private static func message(for url: ShortURL) -> String {
+        let display = url.shortUrl
+            .replacingOccurrences(of: "https://", with: "")
+            .replacingOccurrences(of: "http://", with: "")
+        let target: String
+        if let title = url.title, !title.isEmpty {
+            target = "\(title) (\(display))"
+        } else {
+            target = display
+        }
+        return "\(target) will be permanently deleted. This can't be undone."
     }
 }
