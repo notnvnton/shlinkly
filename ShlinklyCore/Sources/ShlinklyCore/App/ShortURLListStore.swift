@@ -166,6 +166,61 @@ public final class ShortURLListStore {
         loadFirstPage()
     }
 
+    // MARK: - Point mutations (after create / edit / delete)
+    //
+    // These update the in-memory list surgically so a write doesn't force a full
+    // refetch — a refetch would reset the paging cursor and could reshuffle items
+    // under the user. Pull-to-refresh remains the way to fully reconcile.
+
+    /// The outcome of a ``delete(shortCode:domain:)`` call, so the UI can show the
+    /// right message (or nothing, on success).
+    public enum DeleteResult: Equatable {
+        /// Deleted (or already gone): the item has been removed from the list.
+        case deleted
+        /// The server refused to delete a high-traffic link; carries the visit
+        /// ``threshold`` it protects.
+        case forbidden(threshold: Int)
+        /// The delete failed for another reason; carries a user-facing message.
+        case failed(String)
+    }
+
+    /// Inserts a freshly created short URL at the top of the list. A create from
+    /// an empty list flips the state back to ``ViewState/loaded``.
+    public func insertCreated(_ url: ShortURL) {
+        items.insert(url, at: 0)
+        if state == .empty { state = .loaded }
+    }
+
+    /// Replaces an edited short URL in place, matched by identity (domain +
+    /// short code, both immutable across an edit). No-op if it isn't loaded.
+    public func applyUpdated(_ url: ShortURL) {
+        guard let index = items.firstIndex(where: { $0.id == url.id }) else { return }
+        items[index] = url
+    }
+
+    /// Removes a short URL from the list, matched by short code and domain.
+    /// If it empties the list, the state flips to ``ViewState/empty``.
+    public func removeDeleted(shortCode: String, domain: String?) {
+        items.removeAll { $0.shortCode == shortCode && $0.domain == domain }
+        if items.isEmpty, state == .loaded { state = .empty }
+    }
+
+    /// Deletes a short URL on the server and removes it from the list on success
+    /// (or when it's already gone). The result tells the caller whether to show
+    /// an error — the deletion-threshold guard and other failures don't mutate
+    /// the list.
+    public func delete(shortCode: String, domain: String?) async -> DeleteResult {
+        do {
+            try await client.deleteShortURL(shortCode: shortCode, domain: domain)
+            removeDeleted(shortCode: shortCode, domain: domain)
+            return .deleted
+        } catch ShlinkError.deletionForbidden(let threshold) {
+            return .forbidden(threshold: threshold)
+        } catch {
+            return .failed(ShlinkError.userFacingMessage(for: error))
+        }
+    }
+
     // MARK: - Workers
 
     private func runFirstPage() async {
