@@ -592,14 +592,15 @@ private struct RowTags: View {
 // MARK: - Hover-reveal row actions (macOS)
 
 #if os(macOS)
-/// A macOS list row that reveals trailing **Edit** and **Delete** buttons when
-/// the cursor is over it. Unlike a swipe (undiscoverable, non-native on the
-/// Mac), the buttons advertise themselves on hover: they stay laid out but fully
-/// transparent at rest and fade in/out with `.onHover`. Delete routes through the
-/// same central confirmation alert as the context menu — it never deletes
-/// silently. Row selection (a plain tap) and the context menu are unaffected:
-/// the buttons capture their own clicks, and the transparent overlay ignores
-/// hit-testing while hidden so a click anywhere else still selects the row.
+/// A macOS list row whose trailing accessory swaps on hover. At rest it shows
+/// the visit count; when the cursor is over the row the count fades out and
+/// **Edit**/**Delete** buttons fade in *in the same place* — so the buttons
+/// replace the count rather than overlapping it. Unlike a swipe (undiscoverable,
+/// non-native on the Mac), the buttons advertise themselves on hover. Delete
+/// routes through the same central confirmation alert as the context menu — it
+/// never deletes silently. Row selection (a plain tap) and the context menu are
+/// unaffected: the buttons capture their own clicks, and while hidden they ignore
+/// hit-testing so a click in that area still selects the row.
 private struct HoverableLinkRow: View {
     let shortURL: ShortURL
     let onEdit: () -> Void
@@ -609,44 +610,53 @@ private struct HoverableLinkRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            ShortURLRow(shortURL: shortURL)
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                ShortURLRowPrimary(shortURL: shortURL)
+                Spacer(minLength: 8)
+                trailingAccessory
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+
             if !shortURL.tags.isEmpty {
                 RowTags(tags: shortURL.tags, onSelectTag: onSelectTag)
             }
         }
-        .overlay(alignment: .trailing) {
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .animation(.easeInOut(duration: 0.12), value: isHovering)
+    }
+
+    /// The visit count and the action buttons stacked in one place, cross-fading
+    /// by hover. The ZStack sizes to the wider (buttons) child, so the trailing
+    /// edge doesn't shift between states.
+    private var trailingAccessory: some View {
+        ZStack(alignment: .trailing) {
+            VisitsCountLabel(total: shortURL.visitsSummary.total)
+                .opacity(isHovering ? 0 : 1)
+
             hoverActions
                 .opacity(isHovering ? 1 : 0)
                 .allowsHitTesting(isHovering)
         }
-        .onHover { hovering in
-            withAnimation(.easeInOut(duration: 0.15)) {
-                isHovering = hovering
-            }
-        }
     }
 
-    /// The floating Edit/Delete pair shown over the row's trailing edge. A
-    /// material backing lets it sit legibly above the visit-count badge.
     private var hoverActions: some View {
         HStack(spacing: 2) {
             Button(action: onEdit) {
                 Image(systemName: "pencil")
-                    .frame(width: 22, height: 22)
+                    .frame(width: 20, height: 20)
             }
             .help("Edit")
 
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
-                    .frame(width: 22, height: 22)
+                    .frame(width: 20, height: 20)
             }
             .help("Delete")
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 3)
-        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 7))
-        .padding(.trailing, 2)
     }
 }
 #endif
