@@ -115,6 +115,7 @@ struct ShortURLFormView: View {
 
                 advancedSection
             }
+            .formStyle(.grouped)
             .navigationTitle(model.isCreate ? "New Link" : "Edit Link")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
@@ -123,7 +124,7 @@ struct ShortURLFormView: View {
             .task { tagsStore.loadIfNeeded() }
         }
         #if os(macOS)
-        .frame(minWidth: 460, minHeight: 560)
+        .frame(minWidth: 480, idealWidth: 520, minHeight: 560)
         #endif
     }
 
