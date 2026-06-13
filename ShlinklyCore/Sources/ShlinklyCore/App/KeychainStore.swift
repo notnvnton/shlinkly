@@ -24,12 +24,22 @@ public enum KeychainError: Error, Equatable {
 /// A `kSecClassGenericPassword`-backed ``KeychainStoring``.
 ///
 /// `service` is the bundle id and `account` is the instance's UUID, so each
-/// server's key is isolated. Items are stored with
-/// `kSecAttrAccessibleAfterFirstUnlock`; an iCloud-synced key additionally sets
-/// `kSecAttrSynchronizable`. Since synchronizability is fixed at creation,
-/// ``save(_:account:synchronizable:)`` deletes any prior item first and re-adds
-/// with the requested flag. Reads and deletes use `kSecAttrSynchronizableAny`
-/// so they find the item regardless of how it was stored.
+/// server's key is isolated.
+///
+/// The two platforms use different keychains, chosen so an unsigned/ad-hoc dev
+/// build works without provisioning:
+/// - **iOS** uses the data-protection keychain: items are
+///   `kSecAttrAccessibleAfterFirstUnlock`, and an iCloud-stored key additionally
+///   sets `kSecAttrSynchronizable` so it syncs through the user's iCloud
+///   Keychain. Since synchronizability is fixed at creation,
+///   ``save(_:account:synchronizable:)`` deletes any prior item first; reads and
+///   deletes use `kSecAttrSynchronizableAny` to match either form.
+/// - **macOS** is sandboxed, so the default (file-based) keychain is redirected
+///   to the app's container — usable without a keychain-access-group entitlement
+///   (which would force a development certificate). The key is therefore stored
+///   locally regardless of the chosen storage; true iCloud-Keychain sync on the
+///   Mac needs the data-protection keychain, which a signed release build can opt
+///   into later.
 public struct KeychainStore: KeychainStoring {
     private let service: String
 
@@ -37,16 +47,18 @@ public struct KeychainStore: KeychainStoring {
         self.service = service
     }
 
-    /// Attributes common to every query: the generic-password class, the service,
-    /// and — on macOS — the modern data-protection keychain, which is what
-    /// supports `synchronizable` + `accessible` the way iOS does.
+    /// Attributes common to every query: the generic-password class and the
+    /// service. iOS additionally pins the data-protection keychain.
     private func baseQuery(account: String) -> [String: Any] {
-        [
+        var query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
             kSecAttrAccount as String: account,
-            kSecUseDataProtectionKeychain as String: true,
         ]
+        #if os(iOS)
+        query[kSecUseDataProtectionKeychain as String] = true
+        #endif
+        return query
     }
 
     public func save(_ value: String, account: String, synchronizable: Bool) throws {
@@ -56,10 +68,12 @@ public struct KeychainStore: KeychainStoring {
 
         var query = baseQuery(account: account)
         query[kSecValueData as String] = Data(value.utf8)
+        #if os(iOS)
         query[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
         if synchronizable {
             query[kSecAttrSynchronizable as String] = kCFBooleanTrue!
         }
+        #endif
 
         let status = SecItemAdd(query as CFDictionary, nil)
         guard status == errSecSuccess else { throw KeychainError.unhandled(status) }
@@ -69,7 +83,9 @@ public struct KeychainStore: KeychainStoring {
         var query = baseQuery(account: account)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         query[kSecReturnData as String] = true
+        #if os(iOS)
         query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        #endif
 
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
@@ -79,7 +95,9 @@ public struct KeychainStore: KeychainStoring {
 
     public func delete(account: String) throws {
         var query = baseQuery(account: account)
+        #if os(iOS)
         query[kSecAttrSynchronizable as String] = kSecAttrSynchronizableAny
+        #endif
 
         let status = SecItemDelete(query as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
