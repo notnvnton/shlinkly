@@ -39,11 +39,16 @@ struct ServerFormView: View {
         @Bindable var model = model
         Form {
             Section("Name") {
-                TextField("My Shlink (optional)", text: $model.name)
+                // labelsHidden + an in-field prompt so macOS doesn't render a
+                // left label column (the section header is the title). The field
+                // spans full width with the placeholder inside, matching iOS.
+                TextField("Name", text: $model.name, prompt: Text("My Shlink (optional)"))
+                    .labelsHidden()
             }
 
             Section("Server URL") {
-                TextField("https://shlink.example.com", text: $model.urlText)
+                TextField("Server URL", text: $model.urlText, prompt: Text("https://shlink.example.com"))
+                    .labelsHidden()
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -66,6 +71,7 @@ struct ServerFormView: View {
                     Text("iCloud sync").tag(KeyStorage.iCloud)
                 }
                 .pickerStyle(.segmented)
+                .labelsHidden()
             } header: {
                 Text("Key storage")
             } footer: {
