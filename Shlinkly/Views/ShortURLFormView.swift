@@ -37,14 +37,13 @@ struct ShortURLFormView: View {
     }
 
     /// The forwarding explanation shown in the info popover beside the toggle.
+    /// Markdown: `**bold**` and `` `code` `` render in the popover.
     private static let forwardQueryHelp = """
-    You can tack parameters onto a short link after a “?” — usually UTM tags for analytics. This switch decides whether they're passed through to the destination page.
+    What you add to a short link after **`?`** — usually **UTM tags** — is forwarded to the destination page when this is on.
 
-    Example: go.ahodge.de/sale points to your site. In an email the link reads …/sale?utm_source=email; on social it's …?utm_source=twitter. With forwarding on, your site's analytics can tell which channel each visitor came from.
+    So **one link covers every channel**: `example.com/sale?utm_source=email` for email, `?utm_source=twitter` for social — your analytics still sees the source.
 
-    That way a single short link works for every channel at once — you don't need a separate one for each.
-
-    With it off, visitors still reach the same page, just without the added parameters.
+    Off: visitors reach the same page, without the extra parameters.
     """
 
     var body: some View {
@@ -170,20 +169,19 @@ struct ShortURLFormView: View {
                         .foregroundStyle(.orange)
                 }
 
-                HStack {
-                    Text("Visit limit")
-                    Spacer()
-                    TextField("∞", text: $model.maxVisitsText)
-                        .multilineTextAlignment(.trailing)
-                        .frame(maxWidth: 120)
-                        #if os(iOS)
-                        .keyboardType(.numberPad)
-                        #endif
-                        .onChange(of: model.maxVisitsText) { _, newValue in
-                            // Keep it a positive integer: strip anything non-numeric.
-                            let digits = newValue.filter(\.isNumber)
-                            if digits != newValue { model.maxVisitsText = digits }
-                        }
+                VStack(alignment: .leading, spacing: 6) {
+                    Toggle("Visit limit", isOn: $model.limitsVisits)
+                    if model.limitsVisits {
+                        TextField("e.g. 100", text: $model.maxVisitsText)
+                            #if os(iOS)
+                            .keyboardType(.numberPad)
+                            #endif
+                            .onChange(of: model.maxVisitsText) { _, newValue in
+                                // Keep it a positive integer: strip anything non-numeric.
+                                let digits = newValue.filter(\.isNumber)
+                                if digits != newValue { model.maxVisitsText = digits }
+                            }
+                    }
                 }
 
                 Toggle("Allow in robots.txt", isOn: $model.crawlable)

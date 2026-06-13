@@ -34,7 +34,10 @@ public final class ShortURLFormModel {
     public var validSince: Date?
     /// Upper validity bound, or `nil` for none.
     public var validUntil: Date?
-    /// Visit cap as entered text. Empty means no cap (∞).
+    /// Whether a visit cap is set. When off the link is uncapped (∞) and
+    /// ``maxVisitsValue`` is `nil` regardless of ``maxVisitsText``.
+    public var limitsVisits: Bool
+    /// Visit cap as entered text, used only while ``limitsVisits`` is on.
     public var maxVisitsText: String
     /// Whether crawlers may follow the short URL.
     public var crawlable: Bool
@@ -66,6 +69,7 @@ public final class ShortURLFormModel {
             customSlug = ""
             validSince = nil
             validUntil = nil
+            limitsVisits = false
             maxVisitsText = ""
             crawlable = false
             forwardQuery = true
@@ -76,6 +80,7 @@ public final class ShortURLFormModel {
             customSlug = ""
             validSince = url.meta.validSince
             validUntil = url.meta.validUntil
+            limitsVisits = url.meta.maxVisits != nil
             maxVisitsText = url.meta.maxVisits.map(String.init) ?? ""
             crawlable = url.crawlable
             forwardQuery = url.forwardQuery
@@ -105,11 +110,12 @@ public final class ShortURLFormModel {
         return trimmed.contains("://") ? trimmed : "https://\(trimmed)"
     }
 
-    /// The visit cap parsed from ``maxVisitsText``: a positive integer, or `nil`
-    /// (no cap) for empty / non-numeric / non-positive input.
+    /// The visit cap: `nil` when ``limitsVisits`` is off; otherwise the positive
+    /// integer parsed from ``maxVisitsText`` (or `nil` if it isn't one yet).
     public var maxVisitsValue: Int? {
+        guard limitsVisits else { return nil }
         let trimmed = maxVisitsText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty, let value = Int(trimmed), value > 0 else { return nil }
+        guard let value = Int(trimmed), value > 0 else { return nil }
         return value
     }
 
