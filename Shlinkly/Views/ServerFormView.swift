@@ -18,13 +18,21 @@ struct ServerFormView: View {
     @State private var model: ServerFormModel
     /// Called after the green confirmation with the validated instance + key.
     private let onConnected: (ServerInstance, String) -> Void
+    /// When set (edit mode), a destructive "Remove Server" button is shown; the
+    /// host removes the instance and dismisses. Gives macOS — where Settings has
+    /// no swipe — a way to delete a server, and works on iOS too.
+    private let onRemove: (() -> Void)?
+
+    @State private var showRemoveConfirm = false
 
     init(
         mode: ServerFormModel.Mode,
         existingKey: String = "",
+        onRemove: (() -> Void)? = nil,
         onConnected: @escaping (ServerInstance, String) -> Void
     ) {
         _model = State(initialValue: ServerFormModel(mode: mode, existingKey: existingKey))
+        self.onRemove = onRemove
         self.onConnected = onConnected
     }
 
@@ -79,6 +87,10 @@ struct ServerFormView: View {
             }
 
             submitSection
+
+            if onRemove != nil {
+                removeSection
+            }
         }
         .navigationTitle(model.isEdit ? "Edit Server" : "Connect server")
         #if os(iOS)
@@ -88,6 +100,37 @@ struct ServerFormView: View {
         .formStyle(.grouped)
         .frame(minWidth: 460, minHeight: 520)
         #endif
+        .alert("Remove \(displayName)?", isPresented: $showRemoveConfirm) {
+            Button("Remove", role: .destructive) { onRemove?() }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Its API key will be removed from this device. The links on the server itself aren't affected.")
+        }
+    }
+
+    /// Edit-only destructive action to delete this server (no swipe needed).
+    private var removeSection: some View {
+        Section {
+            Button(role: .destructive) {
+                showRemoveConfirm = true
+            } label: {
+                HStack {
+                    Spacer()
+                    Text("Remove Server")
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    /// A label for the remove confirmation: the entered name, else the URL host.
+    private var displayName: String {
+        let trimmed = model.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty { return trimmed }
+        if let url = ServerURLNormalizer.normalize(model.urlText), let host = url.host {
+            return host
+        }
+        return "this server"
     }
 
     // MARK: - Submit
