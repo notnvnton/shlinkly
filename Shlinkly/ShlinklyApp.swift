@@ -11,13 +11,13 @@ import ShlinklyCore
 @main
 struct ShlinklyApp: App {
     @State private var appModel: AppModel
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         let model = AppModel()
-        // Phase 1: the active server + key come from the local dev config.
-        // A later layer swaps this single call for Keychain-backed instances;
-        // AppModel's consumers don't change.
-        model.activate(DevConfig.serverInstance, apiKey: DevConfig.apiKey)
+        // Credentials come from Keychain-backed instances: bootstrap brings the
+        // active server online, or leaves the app in onboarding when none exist.
+        model.bootstrap()
         _appModel = State(initialValue: model)
     }
 
@@ -25,6 +25,15 @@ struct ShlinklyApp: App {
         WindowGroup {
             RootView()
                 .environment(appModel)
+                // The servers live in the (iCloud-synced) Keychain, which has no
+                // live change notification — so re-read it whenever the app comes
+                // to the foreground. A server added with iCloud sync on another
+                // device appears here on this activation.
+                .onChange(of: scenePhase) { _, phase in
+                    if phase == .active {
+                        appModel.refreshFromStore()
+                    }
+                }
         }
     }
 }

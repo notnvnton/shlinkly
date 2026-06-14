@@ -19,50 +19,68 @@ struct ShortURLListScreen: View {
     private let tagsStore: TagsStore
     /// The active server's client, needed to build the create/edit form.
     private let client: ShlinkClient
+    /// Drives the Settings sheet, owned by ``RootView`` so it survives a server
+    /// switch; the gear button toggles it.
+    @Binding private var showSettings: Bool
+    /// Read for the delete-confirmation preferences.
+    @Environment(AppModel.self) private var appModel
     @State private var didInitialLoad = false
     /// The create/edit sheet, or `nil` when none is shown.
     @State private var formRoute: FormRoute?
-    /// The link awaiting delete confirmation.
+    /// The link awaiting single-delete confirmation.
     @State private var pendingDelete: ShortURL?
     /// A delete failure message to surface in an alert.
     @State private var deleteError: String?
 
+    #if os(iOS)
+    /// Shown when the + is tapped and the clipboard looks like it holds a URL.
+    @State private var showPasteChoice = false
+    /// Multi-select state (iPhone). `isSelecting` swaps the toolbar into a
+    /// batch-delete mode; `selectedIDs` tracks the chosen rows.
+    @State private var isSelecting = false
+    @State private var selectedIDs = Set<ShortURL.ID>()
+    @State private var showGroupDeleteConfirm = false
+    #endif
+
     #if os(macOS)
+    /// Whether the clipboard currently looks like it holds a URL, refreshed on
+    /// appear and on activation. Drives whether the "+" is a pull-down menu
+    /// (offering Paste) or a plain button — cached because a menu's items are
+    /// built when the toolbar renders, not at click time, and reading the
+    /// pasteboard on macOS is synchronous and ungated, so refreshing is cheap.
+    @State private var clipboardHasURL = false
+    @Environment(\.scenePhase) private var scenePhase
     /// Drives the detail column of the split view. macOS selects on tap; iOS
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
 
-    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>, showSettings: Binding<Bool>) {
         self.store = store
         self.tagsStore = tagsStore
         self.client = client
         _selection = selection
+        _showSettings = showSettings
     }
     #else
-    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient) {
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, showSettings: Binding<Bool>) {
         self.store = store
         self.tagsStore = tagsStore
         self.client = client
+        _showSettings = showSettings
     }
     #endif
 
     /// Identifies which form to present so `.sheet(item:)` can rebuild content
-    /// per presentation. Create is a singleton; edit carries the target link.
+    /// per presentation. Create carries an optional clipboard prefill; edit
+    /// carries the target link.
     private enum FormRoute: Identifiable {
-        case create
+        case create(prefillURL: String?)
         case edit(ShortURL)
 
         var id: String {
             switch self {
             case .create: return "create"
             case .edit(let url): return "edit-\(url.id)"
-            }
-        }
-
-        var mode: ShortURLFormModel.Mode {
-            switch self {
-            case .create: return .create
-            case .edit(let url): return .edit(url)
             }
         }
     }
@@ -75,15 +93,34 @@ struct ShortURLListScreen: View {
             content
         }
         .navigationTitle("Links")
-        .toolbar { sortToolbar }
-        .toolbar { addToolbar }
+        .toolbar { toolbarContent }
         .searchable(text: searchBinding, prompt: Text("Search links"))
         .tagSearchSuggestions(tagSuggestions) { store.applyTagFromSearch($0) }
+        #if os(iOS)
+        // iPhone: an action sheet rather than a popover, which mis-anchored its
+        // arrow to a list row instead of the "+". macOS uses the "+" pull-down.
+        .confirmationDialog(
+            "You have a link on your clipboard",
+            isPresented: $showPasteChoice,
+            titleVisibility: .visible
+        ) {
+            Button("Paste from clipboard") {
+                formRoute = .create(prefillURL: Clipboard.peekURLString())
+            }
+            Button("New link") {
+                formRoute = .create(prefillURL: nil)
+            }
+        }
+        #endif
         .sheet(item: $formRoute) { route in
-            ShortURLFormView(mode: route.mode, client: client, tagsStore: tagsStore) { result in
-                switch route {
-                case .create: store.insertCreated(result)
-                case .edit: store.applyUpdated(result)
+            switch route {
+            case .create(let prefill):
+                ShortURLFormView(mode: .create, client: client, tagsStore: tagsStore, initialLongURL: prefill) { result in
+                    store.insertCreated(result)
+                }
+            case .edit(let url):
+                ShortURLFormView(mode: .edit(url), client: client, tagsStore: tagsStore) { result in
+                    store.applyUpdated(result)
                 }
             }
         }
@@ -95,7 +132,19 @@ struct ShortURLListScreen: View {
         } message: { message in
             Text(message)
         }
+        #if os(macOS)
+        .onChange(of: scenePhase) { _, phase in
+            // Re-check the clipboard when the window comes forward (e.g. after the
+            // user copied a URL in another app) so the "+" menu reflects it.
+            if phase == .active {
+                Task { clipboardHasURL = await Clipboard.containsProbableURL() }
+            }
+        }
+        #endif
         .task {
+            #if os(macOS)
+            clipboardHasURL = await Clipboard.containsProbableURL()
+            #endif
             tagsStore.loadIfNeeded()
             guard !didInitialLoad else { return }
             didInitialLoad = true
@@ -120,6 +169,35 @@ struct ShortURLListScreen: View {
         Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })
     }
 
+    /// Starts a single delete: shows the confirmation when the "a link"
+    /// preference is on, otherwise deletes straight away.
+    private func requestSingleDelete(_ item: ShortURL) {
+        if appModel.preferences.confirmBeforeDeletingOne {
+            pendingDelete = item
+        } else {
+            Task { await runDelete(item) }
+        }
+    }
+
+    /// Opens the create form, offering to start from a clipboard URL when one is
+    /// present (detected without reading; the value is only read if the user taps
+    /// "Paste from clipboard").
+    private func startCreate() {
+        #if os(iOS)
+        Task {
+            if await Clipboard.containsProbableURL() {
+                showPasteChoice = true
+            } else {
+                formRoute = .create(prefillURL: nil)
+            }
+        }
+        #else
+        // macOS opens New Link directly from the empty-state button; the "+"
+        // toolbar's pull-down menu is where the Paste-from-clipboard choice lives.
+        formRoute = .create(prefillURL: nil)
+        #endif
+    }
+
     // MARK: - Row actions
 
     private func editButton(_ item: ShortURL) -> some View {
@@ -132,7 +210,7 @@ struct ShortURLListScreen: View {
 
     private func deleteButton(_ item: ShortURL) -> some View {
         Button(role: .destructive) {
-            pendingDelete = item
+            requestSingleDelete(item)
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -145,7 +223,7 @@ struct ShortURLListScreen: View {
     /// Using a tint instead of the role avoids the count-mismatch crash.
     private func swipeDeleteButton(_ item: ShortURL) -> some View {
         Button {
-            pendingDelete = item
+            requestSingleDelete(item)
         } label: {
             Label("Delete", systemImage: "trash")
         }
@@ -158,6 +236,59 @@ struct ShortURLListScreen: View {
     private var tagSuggestions: [String] {
         tagsStore.suggestions(for: store.searchTerm)
     }
+
+    #if os(iOS)
+    // MARK: - Multi-select (iPhone)
+
+    /// Bridges the selection flag to the list's `editMode`.
+    private var editModeBinding: Binding<EditMode> {
+        Binding(
+            get: { isSelecting ? .active : .inactive },
+            set: { isSelecting = ($0 == .active) }
+        )
+    }
+
+    /// Enters selection mode with `item` pre-selected (the long-pressed row).
+    private func enterSelection(_ item: ShortURL) {
+        selectedIDs = [item.id]
+        isSelecting = true
+    }
+
+    private func exitSelection() {
+        isSelecting = false
+        selectedIDs.removeAll()
+    }
+
+    /// Starts a batch delete: confirms when the "several links" preference is on,
+    /// otherwise deletes straight away.
+    private func requestGroupDelete() {
+        guard !selectedIDs.isEmpty else { return }
+        if appModel.preferences.confirmBeforeDeletingSeveral {
+            showGroupDeleteConfirm = true
+        } else {
+            Task { await runGroupDelete() }
+        }
+    }
+
+    /// Deletes every selected link, then leaves selection mode. Reports a single
+    /// message if any couldn't be removed.
+    private func runGroupDelete() async {
+        let targets = store.items.filter { selectedIDs.contains($0.id) }
+        var failures = 0
+        for target in targets {
+            if case .deleted = await store.delete(shortCode: target.shortCode, domain: target.domain) {
+                continue
+            }
+            failures += 1
+        }
+        exitSelection()
+        if failures > 0 {
+            deleteError = failures == targets.count
+                ? "Couldn't delete the selected links."
+                : "Some of the selected links couldn't be deleted."
+        }
+    }
+    #endif
 
     // MARK: - State routing
 
@@ -181,12 +312,12 @@ struct ShortURLListScreen: View {
         #if os(macOS)
         List(selection: $selection) {
             ForEach(store.items) { item in
-                VStack(alignment: .leading, spacing: 6) {
-                    ShortURLRow(shortURL: item)
-                    if !item.tags.isEmpty {
-                        RowTags(tags: item.tags) { store.setActiveTag($0) }
-                    }
-                }
+                HoverableLinkRow(
+                    shortURL: item,
+                    onEdit: { formRoute = .edit(item) },
+                    onDelete: { requestSingleDelete(item) },
+                    onSelectTag: { store.setActiveTag($0) }
+                )
                 .tag(Route.shortURLDetail(item))
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
                 .contextMenu {
@@ -203,7 +334,7 @@ struct ShortURLListScreen: View {
         .listStyle(.inset)
         .refreshable { await store.refresh() }
         #else
-        List {
+        List(selection: $selectedIDs) {
             ForEach(store.items) { item in
                 // The chips live *outside* the NavigationLink as siblings so a
                 // chip tap fires its own button (filter) without triggering the
@@ -216,6 +347,7 @@ struct ShortURLListScreen: View {
                         RowTags(tags: item.tags) { store.setActiveTag($0) }
                     }
                 }
+                .tag(item.id)
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     swipeDeleteButton(item)
@@ -223,6 +355,11 @@ struct ShortURLListScreen: View {
                 }
                 .contextMenu {
                     editButton(item)
+                    Button {
+                        enterSelection(item)
+                    } label: {
+                        Label("Select", systemImage: "checkmark.circle")
+                    }
                     Divider()
                     deleteButton(item)
                 }
@@ -233,7 +370,12 @@ struct ShortURLListScreen: View {
             }
         }
         .listStyle(.plain)
+        .scrollDismissesKeyboard(.interactively)
+        .environment(\.editMode, editModeBinding)
         .refreshable { await store.refresh() }
+        .shortURLGroupDeleteConfirmation(count: selectedIDs.count, isPresented: $showGroupDeleteConfirm) {
+            Task { await runGroupDelete() }
+        }
         #endif
     }
 
@@ -272,7 +414,7 @@ struct ShortURLListScreen: View {
         } actions: {
             if !filterActive {
                 Button {
-                    formRoute = .create
+                    startCreate()
                 } label: {
                     Label("Create First Link", systemImage: "plus")
                 }
@@ -300,6 +442,57 @@ struct ShortURLListScreen: View {
 
     // MARK: - Toolbar & bindings
 
+    /// The toolbar swaps to a batch-delete mode while selecting (iPhone);
+    /// otherwise it's the gear + sort + add set.
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        #if os(iOS)
+        if isSelecting {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Cancel") { exitSelection() }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(role: .destructive) {
+                    requestGroupDelete()
+                } label: {
+                    Text(selectedIDs.isEmpty ? "Delete" : "Delete (\(selectedIDs.count))")
+                }
+                .disabled(selectedIDs.isEmpty)
+            }
+        } else {
+            settingsToolbar
+            sortToolbar
+            addToolbar
+        }
+        #else
+        settingsToolbar
+        sortToolbar
+        addToolbar
+        #endif
+    }
+
+    /// The gear that opens Settings, pinned to the top-leading corner.
+    @ToolbarContentBuilder
+    private var settingsToolbar: some ToolbarContent {
+        #if os(iOS)
+        ToolbarItem(placement: .topBarLeading) {
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        }
+        #else
+        ToolbarItem(placement: .navigation) {
+            Button {
+                showSettings = true
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        }
+        #endif
+    }
+
     @ToolbarContentBuilder
     private var sortToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
@@ -314,17 +507,50 @@ struct ShortURLListScreen: View {
         }
     }
 
-    /// The "+" that opens the create form, sitting alongside the sort control.
+    /// The "+" that opens the create form, sitting alongside the sort control. On
+    /// iOS a plain button (the clipboard choice is an action sheet); on macOS a
+    /// pull-down menu offering Paste when the clipboard holds a URL.
     @ToolbarContentBuilder
     private var addToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
+            #if os(iOS)
             Button {
-                formRoute = .create
+                startCreate()
+            } label: {
+                Label("New Link", systemImage: "plus")
+            }
+            #else
+            addMenu
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    /// macOS "+": a pull-down menu with Paste/New when the clipboard looks like a
+    /// URL, or a plain button that opens New Link when it doesn't — so an empty
+    /// clipboard takes a single click and never shows an empty menu.
+    @ViewBuilder
+    private var addMenu: some View {
+        if clipboardHasURL {
+            Menu {
+                Button("Paste from clipboard") {
+                    formRoute = .create(prefillURL: Clipboard.peekURLString())
+                }
+                Button("New link") {
+                    formRoute = .create(prefillURL: nil)
+                }
+            } label: {
+                Label("New Link", systemImage: "plus")
+            }
+        } else {
+            Button {
+                formRoute = .create(prefillURL: nil)
             } label: {
                 Label("New Link", systemImage: "plus")
             }
         }
     }
+    #endif
 
     /// Search routes through the store so the debounce and server query run.
     private var searchBinding: Binding<String> {
@@ -425,6 +651,78 @@ private struct RowTags: View {
     private var visibleTags: [String] { Array(tags.prefix(maxVisible)) }
     private var overflow: Int { max(0, tags.count - maxVisible) }
 }
+
+// MARK: - Hover-reveal row actions (macOS)
+
+#if os(macOS)
+/// A macOS list row whose trailing accessory swaps on hover. At rest it shows
+/// the visit count; when the cursor is over the row the count fades out and
+/// **Edit**/**Delete** buttons fade in *in the same place* — so the buttons
+/// replace the count rather than overlapping it. Unlike a swipe (undiscoverable,
+/// non-native on the Mac), the buttons advertise themselves on hover. Delete
+/// routes through the same central confirmation alert as the context menu — it
+/// never deletes silently. Row selection (a plain tap) and the context menu are
+/// unaffected: the buttons capture their own clicks, and while hidden they ignore
+/// hit-testing so a click in that area still selects the row.
+private struct HoverableLinkRow: View {
+    let shortURL: ShortURL
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onSelectTag: (String) -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                ShortURLRowPrimary(shortURL: shortURL)
+                Spacer(minLength: 8)
+                trailingAccessory
+            }
+            .padding(.vertical, 4)
+            .contentShape(Rectangle())
+
+            if !shortURL.tags.isEmpty {
+                RowTags(tags: shortURL.tags, onSelectTag: onSelectTag)
+            }
+        }
+        .onHover { hovering in
+            isHovering = hovering
+        }
+        .animation(.easeInOut(duration: 0.12), value: isHovering)
+    }
+
+    /// The visit count and the action buttons stacked in one place, cross-fading
+    /// by hover. The ZStack sizes to the wider (buttons) child, so the trailing
+    /// edge doesn't shift between states.
+    private var trailingAccessory: some View {
+        ZStack(alignment: .trailing) {
+            VisitsCountLabel(total: shortURL.visitsSummary.total)
+                .opacity(isHovering ? 0 : 1)
+
+            hoverActions
+                .opacity(isHovering ? 1 : 0)
+                .allowsHitTesting(isHovering)
+        }
+    }
+
+    private var hoverActions: some View {
+        HStack(spacing: 2) {
+            Button(action: onEdit) {
+                Image(systemName: "pencil")
+                    .frame(width: 20, height: 20)
+            }
+            .help("Edit")
+
+            Button(role: .destructive, action: onDelete) {
+                Image(systemName: "trash")
+                    .frame(width: 20, height: 20)
+            }
+            .help("Delete")
+        }
+        .buttonStyle(.borderless)
+    }
+}
+#endif
 
 // MARK: - Filter pill
 

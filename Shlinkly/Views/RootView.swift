@@ -11,19 +11,37 @@ import ShlinklyCore
 /// routing to ``DetailScreen`` through the typed ``Route``.
 struct RootView: View {
     @Environment(AppModel.self) private var appModel
+    /// Hosted here, above the per-client ``ConfiguredRoot``, so switching or
+    /// editing the active server (which rebuilds that subtree) doesn't dismiss
+    /// an open Settings sheet.
+    @State private var showSettings = false
 
     var body: some View {
-        if let client = appModel.client {
-            // Identity-keyed so a re-activated server (new client) rebuilds the
-            // shared list store rather than reusing the old one.
-            ConfiguredRoot(client: client)
-                .id(ObjectIdentifier(client))
-        } else {
-            ContentUnavailableView(
-                "No server configured",
-                systemImage: "server.rack",
-                description: Text("Add a Shlink server to get started.")
-            )
+        Group {
+            if appModel.needsOnboarding {
+                // No servers configured yet — walk the user through connecting one.
+                OnboardingView()
+            } else if let client = appModel.client {
+                // Identity-keyed so a re-activated server (new client) rebuilds
+                // the shared list store rather than reusing the old one.
+                ConfiguredRoot(client: client, showSettings: $showSettings)
+                    .id(ObjectIdentifier(client))
+            } else {
+                // A server exists but its key couldn't be read from the Keychain.
+                ContentUnavailableView(
+                    "Couldn't load credentials",
+                    systemImage: "key.slash",
+                    description: Text("The saved API key for this server is unavailable. Re-add the server to continue.")
+                )
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        // Removing the last server drops back to onboarding; close Settings so it
+        // isn't left hanging over the Welcome screen.
+        .onChange(of: appModel.needsOnboarding) { _, onboarding in
+            if onboarding { showSettings = false }
         }
     }
 }
@@ -33,6 +51,7 @@ struct RootView: View {
 /// state — tapping a tag on detail genuinely narrows the list behind it.
 private struct ConfiguredRoot: View {
     let client: ShlinkClient
+    @Binding var showSettings: Bool
     @State private var listStore: ShortURLListStore
     /// Shared, in-memory tag cache: feeds the macOS sidebar and the iPhone
     /// search suggestions from one load.
@@ -40,12 +59,16 @@ private struct ConfiguredRoot: View {
 
     #if os(macOS)
     @State private var selection: Route?
+    /// Guards the one-time first-launch auto-selection so clearing the detail
+    /// (after a delete or a tag filter) doesn't snap back to the first row.
+    @State private var didAutoSelectFirst = false
     #else
     @State private var path: [Route] = []
     #endif
 
-    init(client: ShlinkClient) {
+    init(client: ShlinkClient, showSettings: Binding<Bool>) {
         self.client = client
+        _showSettings = showSettings
         _listStore = State(initialValue: ShortURLListStore(client: client))
         _tagsStore = State(initialValue: TagsStore(client: client))
     }
@@ -54,8 +77,10 @@ private struct ConfiguredRoot: View {
         #if os(macOS)
         NavigationSplitView {
             TagSidebar(listStore: listStore, tagsStore: tagsStore)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } content: {
-            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, showSettings: $showSettings)
+                .navigationSplitViewColumnWidth(min: 320, ideal: 360)
         } detail: {
             if let selection {
                 destination(selection)
@@ -63,9 +88,12 @@ private struct ConfiguredRoot: View {
                 DetailPlaceholder()
             }
         }
+        .onChange(of: listStore.items.first?.id) { _, _ in
+            autoSelectFirstIfNeeded()
+        }
         #else
         NavigationStack(path: $path) {
-            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, showSettings: $showSettings)
                 .navigationDestination(for: Route.self) { route in
                     destination(route)
                 }
@@ -113,6 +141,19 @@ private struct ConfiguredRoot: View {
         if !path.isEmpty { path.removeLast() }
         #endif
     }
+
+    #if os(macOS)
+    /// On the first macOS launch, selects the first link once the list loads so
+    /// the detail column isn't left empty. Fires only once (`didAutoSelectFirst`)
+    /// and never overrides an existing selection.
+    private func autoSelectFirstIfNeeded() {
+        guard !didAutoSelectFirst,
+              selection == nil,
+              let first = listStore.items.first else { return }
+        didAutoSelectFirst = true
+        selection = .shortURLDetail(first)
+    }
+    #endif
 }
 
 #if os(macOS)
@@ -125,6 +166,7 @@ private struct ConfiguredRoot: View {
 private struct TagSidebar: View {
     let listStore: ShortURLListStore
     let tagsStore: TagsStore
+    @Environment(AppModel.self) private var appModel
 
     /// A concrete selection value per row. "All Links" gets its own case rather
     /// than a `nil` tag — `List` treats a `nil` selection as "nothing selected",
@@ -149,8 +191,7 @@ private struct TagSidebar: View {
                 }
             }
         }
-        .navigationTitle("Shlinkly")
-        .frame(minWidth: 200)
+        .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
         .task { tagsStore.loadIfNeeded() }
     }
 
