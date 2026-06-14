@@ -178,22 +178,30 @@ struct ServerFormView: View {
     private var submitSection: some View {
         Section {
             Button(action: submit) {
-                HStack {
-                    Spacer()
-                    if model.isValidating {
-                        ProgressView()
-                    } else {
-                        Text(model.isEdit ? "Save" : "Connect")
-                            .fontWeight(.semibold)
+                // Built exactly like the onboarding "Connect your server" button
+                // (full width, .borderedProminent, .controlSize(.large)) so all the
+                // primary buttons share one height — no extra fixed height here.
+                // The title stays in the layout in both states (just hidden while
+                // validating) and the spinner is laid over the same frame, so the
+                // button's size never changes between states.
+                Text(model.isEdit ? "Save" : "Connect")
+                    .fontWeight(.semibold)
+                    .frame(maxWidth: .infinity)
+                    .opacity(model.isValidating ? 0 : 1)
+                    .overlay {
+                        if model.isValidating {
+                            // Standard circular spinner, shrunk so it isn't sized up
+                            // by the button's .large control size, and tinted to the
+                            // white title — it sits well within the button bounds.
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(.white)
+                        }
                     }
-                    Spacer()
-                }
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!model.canSubmit)
-            #if os(macOS)
             .controlSize(.large)
-            #endif
+            .disabled(!model.canSubmit)
         } footer: {
             statusFooter
         }
