@@ -111,9 +111,16 @@ struct ServerFormView: View {
         .navigationBarTitleDisplayMode(.inline)
         .scrollDismissesKeyboard(.interactively)
         .toolbar {
+            // Native keyboard-accessory "Done": a plain text button pushed to the
+            // trailing edge by a Spacer, shown only while a field is focused. No
+            // custom background/buttonStyle/tint — the glass capsule seen on iOS 26
+            // is the system Liquid Glass styling applied to keyboard toolbar items
+            // themselves, not chrome we add (and .buttonStyle(.plain) is
+            // unavailable on iOS 26, so it can't be flattened that way).
             ToolbarItemGroup(placement: .keyboard) {
                 Spacer()
                 Button("Done") { focusedField = nil }
+                    .fontWeight(.semibold)
             }
         }
         #endif
