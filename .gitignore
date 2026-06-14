@@ -66,7 +66,3 @@ fastlane/test_output
 .AppleDouble
 .LSOverride
 ._*
-
-# Local-only dev config (holds the Shlink API key). Copy from
-# DevConfig.example.swift and fill in your key; never commit it.
-Shlinkly/DevConfig.swift
