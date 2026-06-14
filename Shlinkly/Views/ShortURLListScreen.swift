@@ -31,8 +31,19 @@ struct ShortURLListScreen: View {
     @State private var pendingDelete: ShortURL?
     /// A delete failure message to surface in an alert.
     @State private var deleteError: String?
+    /// Drives the transient "Copied" toast shown after a copy action (both
+    /// platforms). Flipped on with animation, then off ~1.5s later.
+    @State private var showCopiedToast = false
+    /// Cancels a pending toast-hide so back-to-back copies restart the timer
+    /// instead of the first one's timer hiding the second toast early.
+    @State private var copiedResetTask: Task<Void, Never>?
 
     #if os(iOS)
+    /// Bumped on each copy to fire a light haptic via `.sensoryFeedback`.
+    @State private var copyFeedbackTrigger = 0
+    /// The link awaiting the system share sheet, presented from the swipe action
+    /// (where `ShareLink` is ignored). `nil` when no share sheet is shown.
+    @State private var shareItem: ShareItem?
     /// Shown when the + is tapped and the clipboard looks like it holds a URL.
     @State private var showPasteChoice = false
     /// Multi-select state (iPhone). `isSelecting` swaps the toolbar into a
@@ -150,6 +161,13 @@ struct ShortURLListScreen: View {
             didInitialLoad = true
             store.loadFirstPage()
         }
+        .copiedToast(isPresented: showCopiedToast)
+        #if os(iOS)
+        .sensoryFeedback(.impact(weight: .light), trigger: copyFeedbackTrigger)
+        .sheet(item: $shareItem) { item in
+            ShareSheet(url: item.url)
+        }
+        #endif
     }
 
     /// Runs the delete and surfaces a message on the non-success outcomes; the
@@ -229,6 +247,69 @@ struct ShortURLListScreen: View {
         }
         .tint(.red)
     }
+
+    /// Copies a link's short URL, fires a light haptic (iOS) and shows the
+    /// "Copied" toast. The single entry point for copy across the leading swipe,
+    /// the context menu and the macOS hover button. It delegates the actual copy
+    /// to ``LinkActions`` so a future widget App Intent can reuse the same logic.
+    private func copyShortURL(_ item: ShortURL) {
+        LinkActions.copyShortURL(item)
+        #if os(iOS)
+        copyFeedbackTrigger += 1
+        #endif
+        presentCopiedToast()
+    }
+
+    /// Fades the "Copied" toast in and schedules its fade-out ~1.5s later,
+    /// restarting the timer if another copy happens first.
+    private func presentCopiedToast() {
+        copiedResetTask?.cancel()
+        withAnimation(.easeInOut(duration: 0.2)) { showCopiedToast = true }
+        copiedResetTask = Task {
+            try? await Task.sleep(for: .seconds(1.5))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.3)) { showCopiedToast = false }
+        }
+    }
+
+    /// The Copy action, reused by the leading swipe and the context menus.
+    private func copyButton(_ item: ShortURL) -> some View {
+        Button {
+            copyShortURL(item)
+        } label: {
+            Label("Copy", systemImage: "doc.on.doc")
+        }
+    }
+
+    /// A native share entry for the context menus (and macOS hover). `ShareLink`
+    /// opens the system share sheet itself, so it works everywhere *except*
+    /// inside a swipe action — that path uses ``shareShortURL(_:)`` instead.
+    @ViewBuilder
+    private func shareLink(_ item: ShortURL) -> some View {
+        if let url = URL(string: item.shortUrl) {
+            ShareLink(item: url)
+        }
+    }
+
+    #if os(iOS)
+    /// Presents the system share sheet for a link via state — used by the swipe
+    /// action, where `ShareLink` is ignored and the button must be a `Button`.
+    private func shareShortURL(_ item: ShortURL) {
+        guard let url = URL(string: item.shortUrl) else { return }
+        shareItem = ShareItem(url: url)
+    }
+
+    /// The trailing-swipe Share button. A plain `Button` (not `ShareLink`) that
+    /// routes through the centralized state-driven share sheet.
+    private func swipeShareButton(_ item: ShortURL) -> some View {
+        Button {
+            shareShortURL(item)
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .tint(.indigo)
+    }
+    #endif
 
     /// Tags matching the current search text, surfaced as suggestions while the
     /// user types (iPhone). Empty while not searching, so the URL/code results
@@ -314,6 +395,7 @@ struct ShortURLListScreen: View {
             ForEach(store.items) { item in
                 HoverableLinkRow(
                     shortURL: item,
+                    onCopy: { copyShortURL(item) },
                     onEdit: { formRoute = .edit(item) },
                     onDelete: { requestSingleDelete(item) },
                     onSelectTag: { store.setActiveTag($0) }
@@ -321,6 +403,9 @@ struct ShortURLListScreen: View {
                 .tag(Route.shortURLDetail(item))
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
                 .contextMenu {
+                    copyButton(item)
+                    shareLink(item)
+                    Divider()
                     editButton(item)
                     Divider()
                     deleteButton(item)
@@ -349,11 +434,20 @@ struct ShortURLListScreen: View {
                 }
                 .tag(item.id)
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
+                // Leading: full-swipe copies. Kept as its own block so a Pin
+                // button can later sit alongside Copy without restructuring.
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    copyButton(item).tint(.accentColor)
+                }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     swipeDeleteButton(item)
                     editButton(item).tint(.blue)
+                    swipeShareButton(item)
                 }
                 .contextMenu {
+                    copyButton(item)
+                    shareLink(item)
+                    Divider()
                     editButton(item)
                     Button {
                         enterSelection(item)
@@ -666,6 +760,7 @@ private struct RowTags: View {
 /// hit-testing so a click in that area still selects the row.
 private struct HoverableLinkRow: View {
     let shortURL: ShortURL
+    let onCopy: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onSelectTag: (String) -> Void
@@ -707,6 +802,20 @@ private struct HoverableLinkRow: View {
 
     private var hoverActions: some View {
         HStack(spacing: 2) {
+            Button(action: onCopy) {
+                Image(systemName: "doc.on.doc")
+                    .frame(width: 20, height: 20)
+            }
+            .help("Copy short URL")
+
+            if let url = URL(string: shortURL.shortUrl) {
+                ShareLink(item: url) {
+                    Image(systemName: "square.and.arrow.up")
+                        .frame(width: 20, height: 20)
+                }
+                .help("Share")
+            }
+
             Button(action: onEdit) {
                 Image(systemName: "pencil")
                     .frame(width: 20, height: 20)
