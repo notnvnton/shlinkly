@@ -265,9 +265,13 @@ struct ShortURLFormView: View {
             }
         }
         #if os(iOS)
+        // Native keyboard-accessory "Done": plain trailing text button, shown only
+        // while a field is focused. The glass capsule on iOS 26 is the system
+        // Liquid Glass styling of keyboard toolbar items, not chrome we add.
         ToolbarItemGroup(placement: .keyboard) {
             Spacer()
             Button("Done") { focusedField = nil }
+                .fontWeight(.semibold)
         }
         #endif
     }
