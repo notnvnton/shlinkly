@@ -6,6 +6,13 @@
 import SwiftUI
 import ShlinklyCore
 
+/// The focusable text fields of the link form. File-scoped so the tag editor
+/// subview can share the same `@FocusState` and the keyboard "Done" can clear
+/// focus from any of them.
+private enum ShortURLFormField: Hashable {
+    case longURL, title, tag, slug, visitLimit
+}
+
 /// The create/edit short-URL form, presented as a sheet on both platforms.
 ///
 /// One view, two modes (driven by ``ShortURLFormModel/Mode``): create starts
@@ -24,14 +31,21 @@ struct ShortURLFormView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(AppModel.self) private var appModel
     @State private var advancedExpanded = false
+    /// Set after a successful *create* to swap the form for the success screen
+    /// (edits dismiss straight away). `nil` while the form is showing.
+    @State private var createdURL: ShortURL?
+    /// Which text field holds focus, so the iOS keyboard's "Done" can dismiss it.
+    /// Cross-platform; only the keyboard toolbar that clears it is iOS-only.
+    @FocusState private var focusedField: ShortURLFormField?
 
     init(
         mode: ShortURLFormModel.Mode,
         client: ShlinkClient,
         tagsStore: TagsStore,
+        initialLongURL: String? = nil,
         onComplete: @escaping (ShortURL) -> Void
     ) {
-        _model = State(initialValue: ShortURLFormModel(mode: mode, client: client))
+        _model = State(initialValue: ShortURLFormModel(mode: mode, client: client, initialLongURL: initialLongURL))
         self.tagsStore = tagsStore
         self.onComplete = onComplete
     }
@@ -61,8 +75,17 @@ struct ShortURLFormView: View {
     """
 
     var body: some View {
+        if let createdURL {
+            // After a create, the form gives way to a focused success screen.
+            CreatedShortURLView(shortURL: createdURL) { dismiss() }
+        } else {
+            formBody
+        }
+    }
+
+    private var formBody: some View {
         @Bindable var model = model
-        NavigationStack {
+        return NavigationStack {
             Form {
                 if let submissionError = model.submissionError {
                     Section {
@@ -73,8 +96,12 @@ struct ShortURLFormView: View {
                 }
 
                 Section("Long URL") {
-                    TextField("https://example.com/page", text: $model.longURL, axis: .vertical)
+                    // labelsHidden + in-field prompt so macOS doesn't render a
+                    // left label column; the field is full width as on iOS.
+                    TextField("Long URL", text: $model.longURL, prompt: Text("https://example.com/page"), axis: .vertical)
+                        .labelsHidden()
                         .lineLimit(1...4)
+                        .focused($focusedField, equals: .longURL)
                         #if os(iOS)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -83,11 +110,13 @@ struct ShortURLFormView: View {
                 }
 
                 Section("Title") {
-                    TextField("Optional title", text: $model.title)
+                    TextField("Title", text: $model.title, prompt: Text("Optional title"))
+                        .labelsHidden()
+                        .focused($focusedField, equals: .title)
                 }
 
                 Section("Tags") {
-                    TagsField(model: model, tagsStore: tagsStore)
+                    TagsField(model: model, tagsStore: tagsStore, focused: $focusedField)
                 }
 
                 if model.isCreate {
@@ -98,15 +127,17 @@ struct ShortURLFormView: View {
 
                 advancedSection
             }
+            .formStyle(.grouped)
             .navigationTitle(model.isCreate ? "New Link" : "Edit Link")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
             #endif
             .toolbar { toolbarContent }
             .task { tagsStore.loadIfNeeded() }
         }
         #if os(macOS)
-        .frame(minWidth: 460, minHeight: 560)
+        .frame(minWidth: 480, idealWidth: 520, minHeight: 560)
         #endif
     }
 
@@ -124,7 +155,9 @@ struct ShortURLFormView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
-                TextField("custom-slug", text: $model.customSlug)
+                TextField("Custom slug", text: $model.customSlug, prompt: Text("custom-slug"))
+                    .labelsHidden()
+                    .focused($focusedField, equals: .slug)
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -183,7 +216,9 @@ struct ShortURLFormView: View {
                         infoMessage: Self.visitLimitHelp
                     )
                     if model.limitsVisits {
-                        TextField("e.g. 100", text: $model.maxVisitsText)
+                        TextField("Visit limit", text: $model.maxVisitsText, prompt: Text("e.g. 100"))
+                            .labelsHidden()
+                            .focused($focusedField, equals: .visitLimit)
                             #if os(iOS)
                             .keyboardType(.numberPad)
                             #endif
@@ -229,6 +264,12 @@ struct ShortURLFormView: View {
                     .disabled(!model.canSubmit)
             }
         }
+        #if os(iOS)
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done") { focusedField = nil }
+        }
+        #endif
     }
 
     // MARK: - Helpers
@@ -241,11 +282,19 @@ struct ShortURLFormView: View {
 
     private func submit() {
         Task {
-            if let result = await model.submit() {
-                onComplete(result)
+            guard let result = await model.submit() else {
+                // On failure the model surfaces the error inline; the sheet stays open.
+                return
+            }
+            // Update the list behind the sheet either way.
+            onComplete(result)
+            if model.isCreate {
+                // Copy the new short URL up front, then show the success screen.
+                Clipboard.copy(result.shortUrl)
+                createdURL = result
+            } else {
                 dismiss()
             }
-            // On failure the model surfaces the error inline; the sheet stays open.
         }
     }
 }
@@ -258,6 +307,9 @@ struct ShortURLFormView: View {
 private struct TagsField: View {
     let model: ShortURLFormModel
     let tagsStore: TagsStore
+    /// The host form's focus, so the tag entry shares the same `@FocusState` and
+    /// the keyboard "Done" dismisses it like the other fields.
+    let focused: FocusState<ShortURLFormField?>.Binding
     @State private var draft = ""
 
     var body: some View {
@@ -270,7 +322,9 @@ private struct TagsField: View {
                 }
             }
 
-            TextField("Add a tag", text: $draft)
+            TextField("Tag", text: $draft, prompt: Text("Add a tag"))
+                .labelsHidden()
+                .focused(focused, equals: .tag)
                 #if os(iOS)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()

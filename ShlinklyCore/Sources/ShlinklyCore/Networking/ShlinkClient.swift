@@ -51,8 +51,12 @@ public actor ShlinkClient {
     /// - Parameters:
     ///   - page: 1-based page number.
     ///   - itemsPerPage: Page size.
-    ///   - searchTerm: Optional substring filter applied by the server across
-    ///     `longUrl` and `shortCode`. Empty/`nil` means no filter.
+    ///   - searchTerm: Optional substring filter applied **by the server** across
+    ///     a short URL's `longUrl`, `shortCode` and `title` (verified empirically
+    ///     against Shlink 5.0.2 — a title-only token matches). The list is purely
+    ///     server-side: callers pass this straight through and never filter
+    ///     locally, so title matching comes for free and paging stays correct.
+    ///     Empty/`nil` means no filter.
     ///   - tags: Optional tag filter. Each tag is sent as a `tags[]` item; the
     ///     server returns short URLs carrying *any* of the given tags.
     ///   - orderBy: Optional server-side ordering. `nil` uses the server default.

@@ -58,12 +58,14 @@ public final class ShortURLFormModel {
     private let mode: Mode
     private let client: ShlinkClient
 
-    public init(mode: Mode, client: ShlinkClient) {
+    /// - Parameter initialLongURL: Pre-fills the destination in create mode
+    ///   (used when the user chooses "Paste from clipboard" on the + button).
+    public init(mode: Mode, client: ShlinkClient, initialLongURL: String? = nil) {
         self.mode = mode
         self.client = client
         switch mode {
         case .create:
-            longURL = ""
+            longURL = initialLongURL ?? ""
             title = ""
             tags = []
             customSlug = ""
