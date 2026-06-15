@@ -200,17 +200,17 @@ struct SettingsView: View {
         NavigationStack {
             switch route {
             case .add:
-                ServerFormView(mode: .add) { instance, key in
+                ServerFormView(mode: .add, presentedAsSheet: true) { instance, key in
                     // On a save failure this throws *before* dismissing, so the
                     // sheet stays open and the form shows the error.
                     try appModel.addInstance(instance, apiKey: key)
                     formRoute = nil
                 }
-                .toolbar { cancelFormButton }
             case .edit(let instance):
                 ServerFormView(
                     mode: .edit(instance),
                     existingKey: appModel.instanceStore.apiKey(for: instance.id) ?? "",
+                    presentedAsSheet: true,
                     onRemove: {
                         formRoute = nil
                         appModel.removeInstance(instance.id)
@@ -219,15 +219,7 @@ struct SettingsView: View {
                     try appModel.updateInstance(updated, apiKey: key)
                     formRoute = nil
                 }
-                .toolbar { cancelFormButton }
             }
-        }
-    }
-
-    @ToolbarContentBuilder
-    private var cancelFormButton: some ToolbarContent {
-        ToolbarItem(placement: .cancellationAction) {
-            Button("Cancel") { formRoute = nil }
         }
     }
 }

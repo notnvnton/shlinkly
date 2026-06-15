@@ -43,6 +43,12 @@ public final class ServerFormModel {
     private let originalKey: String
     private let urlSession: URLSession
 
+    // Snapshot of the fields when the form opened, for the unsaved-changes guard.
+    private let initialName: String
+    private let initialURLText: String
+    private let initialKey: String
+    private let initialKeyStorage: KeyStorage
+
     /// - Parameters:
     ///   - mode: Add, or edit a specific instance.
     ///   - existingKey: The current key when editing (pre-fills the field), so an
@@ -51,22 +57,38 @@ public final class ServerFormModel {
     public init(mode: Mode, existingKey: String = "", urlSession: URLSession = .shared) {
         self.mode = mode
         self.urlSession = urlSession
+
+        // Resolve the opening values once, then seed both the live fields and the
+        // initial snapshot `isDirty` compares against — assigning from locals so we
+        // never read `self` before every stored property is initialised.
+        let startName: String
+        let startURLText: String
+        let startKey: String
+        let startKeyStorage: KeyStorage
         switch mode {
         case .add:
-            name = ""
-            urlText = ""
-            apiKey = ""
-            keyStorage = .local
+            startName = ""
+            startURLText = ""
+            startKey = ""
+            startKeyStorage = .local
             originalNormalizedURL = nil
             originalKey = ""
         case .edit(let instance):
-            name = instance.name ?? ""
-            urlText = instance.baseURL.absoluteString
-            apiKey = existingKey
-            keyStorage = instance.keyStorage
+            startName = instance.name ?? ""
+            startURLText = instance.baseURL.absoluteString
+            startKey = existingKey
+            startKeyStorage = instance.keyStorage
             originalNormalizedURL = instance.baseURL
             originalKey = existingKey
         }
+        name = startName
+        urlText = startURLText
+        apiKey = startKey
+        keyStorage = startKeyStorage
+        initialName = startName
+        initialURLText = startURLText
+        initialKey = startKey
+        initialKeyStorage = startKeyStorage
     }
 
     // MARK: Derived
@@ -74,6 +96,17 @@ public final class ServerFormModel {
     public var isEdit: Bool {
         if case .edit = mode { return true }
         return false
+    }
+
+    /// Whether any editable field differs from its value when the form opened
+    /// (Add: an empty form; Edit: the server's current values). Drives the
+    /// guard against closing the form with unsaved edits. The Key storage mode is
+    /// included deliberately — it, like every field, only takes effect on Save.
+    public var isDirty: Bool {
+        name != initialName
+            || urlText != initialURLText
+            || apiKey != initialKey
+            || keyStorage != initialKeyStorage
     }
 
     /// Submit is enabled once a URL and a key are present and no probe is running.
