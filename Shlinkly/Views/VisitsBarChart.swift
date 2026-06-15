@@ -17,6 +17,10 @@ struct VisitsBarChart: View {
     /// Fixed upper bound for the Y axis. Held constant across the bot toggle so
     /// excluding bots only shortens bars instead of rescaling the axis.
     let yMax: Int
+    /// The full period window for the X axis. Pinning it here locks the axis to
+    /// the whole period (in dates), so a link whose visits land on a single day
+    /// still shows the full daily window — never an hour axis with one wide bar.
+    let xDomain: ClosedRange<Date>
 
     var body: some View {
         Chart(data) { point in
@@ -28,6 +32,7 @@ struct VisitsBarChart: View {
             // Round the top of each bar for a softer, less "spreadsheet" look.
             .cornerRadius(5)
         }
+        .chartXScale(domain: xDomain)
         .chartYScale(domain: 0...yMax)
         .chartYAxis {
             // Sparse Y ticks, each with a single thin, solid, very light guide
