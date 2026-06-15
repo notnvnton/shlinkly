@@ -274,6 +274,17 @@ public final class ShortURLDetailStore {
         return "\(start.formatted(style)) – \(end.formatted(style))"
     }
 
+    /// The chart's continuous X-axis domain: the current window's first day
+    /// through the day *after* today. Pinning the whole period stops a single
+    /// day's data from collapsing the axis to an hour scale; the one-day trailing
+    /// pad keeps the final (today) bar off the right edge. `window(for:now:)`
+    /// already guarantees `start <= end`, so this range is never inverted.
+    public var chartXDomain: ClosedRange<Date> {
+        let (start, end) = window(for: period, now: Date())
+        let trailing = calendar.date(byAdding: .day, value: 1, to: end) ?? end
+        return start...trailing
+    }
+
     /// Per-day visit counts across ``window(for:now:)``, with empty days
     /// zero-filled so the chart's axis stays continuous. Honours the bot toggle.
     public var dailyCounts: [DailyCount] {
