@@ -68,14 +68,14 @@ struct SettingsView: View {
                 serverForm(route)
             }
             .alert(
-                pendingRemoval.map { "Remove \($0.displayName)?" } ?? "Remove server?",
+                pendingRemoval.map { "Remove \"\($0.displayName)\"?" } ?? "Remove server?",
                 isPresented: removalBinding,
                 presenting: pendingRemoval
             ) { server in
-                Button("Remove", role: .destructive) { appModel.removeInstance(server.id) }
+                Button("Remove from All Devices", role: .destructive) { appModel.removeInstance(server.id) }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
-                Text("Its API key will be removed from this device. The links on the server itself aren't affected.")
+                Text("This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too.")
             }
         }
     }

@@ -128,11 +128,11 @@ struct ServerFormView: View {
         .formStyle(.grouped)
         .frame(minWidth: 460, minHeight: 520)
         #endif
-        .alert("Remove \(displayName)?", isPresented: $showRemoveConfirm) {
-            Button("Remove", role: .destructive) { onRemove?() }
+        .alert("Remove \"\(displayName)\"?", isPresented: $showRemoveConfirm) {
+            Button("Remove from All Devices", role: .destructive) { onRemove?() }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("Its API key will be removed from this device. The links on the server itself aren't affected.")
+            Text("This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too.")
         }
         .alert("Couldn't save the server", isPresented: saveErrorBinding) {
             Button("OK", role: .cancel) {}
