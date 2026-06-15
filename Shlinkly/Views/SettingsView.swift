@@ -17,6 +17,13 @@ struct SettingsView: View {
     @Environment(AppModel.self) private var appModel
     @Environment(\.dismiss) private var dismiss
 
+    #if os(macOS)
+    /// Shows/hides the menu-bar icon. Shares the `UserDefaults` key with the
+    /// app's ``MenuBarExtra`` `isInserted` binding, so toggling here adds or
+    /// removes the icon live.
+    @AppStorage("shlinkly.showInMenuBar") private var showInMenuBar = true
+    #endif
+
     /// The add/edit server form to present, or `nil`.
     @State private var formRoute: ServerFormRoute?
     /// The server awaiting remove confirmation.
@@ -38,6 +45,9 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 serversSection
+                #if os(macOS)
+                menuBarSection
+                #endif
                 deletionSection
                 aboutSection
             }
@@ -120,6 +130,20 @@ struct SettingsView: View {
             appModel.selectInstance(instance.id)
         }
     }
+
+    // MARK: - Menu bar (macOS)
+
+    #if os(macOS)
+    private var menuBarSection: some View {
+        Section {
+            Toggle("Show in menu bar", isOn: $showInMenuBar)
+        } header: {
+            Text("Menu Bar")
+        } footer: {
+            Text("Adds a Shlinkly icon to the menu bar for quick actions like generating a short link from the clipboard.")
+        }
+    }
+    #endif
 
     // MARK: - Deletion preferences
 
