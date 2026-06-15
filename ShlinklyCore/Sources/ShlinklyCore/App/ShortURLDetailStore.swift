@@ -196,26 +196,29 @@ public final class ShortURLDetailStore {
     }
 
     /// The inclusive start-of-day window `[start, end]` that the chart spans and
-    /// the request is bounded to, clamped so it never reaches before the link
-    /// was created.
+    /// the request is bounded to.
     ///
     /// - 7/30 days: `start` is `dayCount - 1` days before today (so "7 days"
-    ///   covers today plus the six preceding days), but no earlier than the
-    ///   creation day — which drops the empty left tail for young links.
+    ///   covers today plus the six preceding days) — a *fixed* window anchored to
+    ///   today. It is kept full even for a link created today, so the chart always
+    ///   renders a continuous daily axis (the empty leading days are zero-filled)
+    ///   instead of collapsing to a single, hour-scaled day.
     /// - All time: `start` is the creation day.
     ///
-    /// Because the windows clamp to the same floor they nest, so the period
-    /// totals order All ≥ 30 days ≥ 7 days; for a link younger than the period
-    /// all three windows coincide.
+    /// The request start is only a lower bound — fetching from before the link
+    /// existed simply returns nothing — so the period totals still order
+    /// All ≥ 30 days ≥ 7 days.
     func window(for period: Period, now: Date) -> (start: Date, end: Date) {
         let end = calendar.startOfDay(for: now)
-        let created = calendar.startOfDay(for: shortURL.dateCreated)
         let start: Date
         if let days = period.dayCount {
-            let naive = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
-            start = max(naive, created)
+            // Full fixed window, NOT clamped to the creation day: a young link's
+            // pre-existence days show as zero-height bars rather than shrinking the
+            // axis to a single (hour-scaled) day.
+            start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
         } else {
-            start = created
+            // All time runs from the creation day through today.
+            start = calendar.startOfDay(for: shortURL.dateCreated)
         }
         // A creation date in the future (clock skew) must not invert the window.
         return (min(start, end), end)
@@ -260,6 +263,16 @@ public final class ShortURLDetailStore {
             return start.formatted(style)
         }
         return "\(start.formatted(style)) – \(end.formatted(style))"
+    }
+
+    /// The chart's X-axis domain: the current window's first day through the day
+    /// *after* today. Locking the axis to the whole period stops a single day's
+    /// data from shrinking it to an hour scale; the one-day trailing pad keeps the
+    /// final (today) bar — a full day wide — from being clipped at the right edge.
+    public var chartXDomain: ClosedRange<Date> {
+        let (start, end) = window(for: period, now: Date())
+        let trailing = calendar.date(byAdding: .day, value: 1, to: end) ?? end
+        return start...trailing
     }
 
     /// Per-day visit counts across ``window(for:now:)``, with empty days
