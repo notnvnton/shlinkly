@@ -12,8 +12,18 @@ extension ShlinkError {
             return "Your API key was rejected. Check the server credentials."
         case ShlinkError.notFound:
             return "The server endpoint could not be found."
-        case ShlinkError.networkError:
-            return "Couldn't reach the server. Check your connection and try again."
+        case ShlinkError.networkError(let underlying):
+            // Only genuine "the server couldn't be reached" connectivity failures
+            // get the connectivity message. Anything else — e.g. the connection
+            // dropping *after* the server already processed the request, which is
+            // why a successful delete used to report "couldn't reach the server" —
+            // keeps its real reason rather than masquerading as unreachable.
+            if let urlError = underlying as? URLError, connectivityCodes.contains(urlError.code) {
+                return "Couldn't reach the server. Check your connection and try again."
+            }
+            return "The request couldn't be completed: \(underlying.localizedDescription)"
+        case ShlinkError.unexpectedStatus(let code):
+            return "The server returned an unexpected response (HTTP \(code))."
         case ShlinkError.slugInUse:
             return "That custom slug is already taken."
         case ShlinkError.deletionForbidden(let threshold):
@@ -30,4 +40,15 @@ extension ShlinkError {
             return "Something went wrong. Please try again."
         }
     }
+
+    /// The `URLError` codes that genuinely mean "the server couldn't be reached".
+    /// Other transport errors (e.g. `networkConnectionLost`, which can fire after
+    /// the request was already processed server-side) are deliberately excluded so
+    /// they don't masquerade as a connectivity problem.
+    private static let connectivityCodes: Set<URLError.Code> = [
+        .notConnectedToInternet,
+        .cannotConnectToHost,
+        .timedOut,
+        .cannotFindHost,
+    ]
 }
