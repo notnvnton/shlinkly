@@ -53,19 +53,19 @@ struct DetailScreen: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                header
+            // Each block is its own card so the dense page reads as distinct
+            // sections rather than one wall of content. The same structure (and
+            // the same surface convention) is used on both platforms; only the
+            // breakdown columns differ (see `breakdownSections`).
+            VStack(alignment: .leading, spacing: 20) {
+                DetailCard { header }
                 if let destinationURL {
-                    LinkPreviewView(url: destinationURL)
+                    DetailCard {
+                        LinkPreviewView(url: destinationURL)
+                    }
                 }
-                if !shortURL.tags.isEmpty {
-                    TagChipsView(tags: shortURL.tags, onSelectTag: onSelectTag)
-                }
-                periodPicker
-                metricCards
-                Toggle("Exclude bots", isOn: excludeBotsBinding)
-                    .font(.subheadline)
-                chartSection
+                DetailCard { summarySection }
+                DetailCard { chartSection }
                 breakdownSections
             }
             .padding()
@@ -166,6 +166,27 @@ struct DetailScreen: View {
                 .buttonStyle(.bordered)
                 .controlSize(.small)
             }
+
+            // Tags belong to the link's identity, so they live in the header card
+            // rather than as a floating row between sections.
+            if !shortURL.tags.isEmpty {
+                TagChipsView(tags: shortURL.tags, onSelectTag: onSelectTag)
+                    .padding(.top, 2)
+            }
+        }
+    }
+
+    // MARK: - Summary (period + metric tiles + bot toggle)
+
+    /// Period control, the three metric tiles and the bot toggle share one card:
+    /// they all govern the same period/visits data, so grouping them reads as a
+    /// single control surface. The tiles are their own rounded sub-cards within.
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            periodPicker
+            metricCards
+            Toggle("Exclude bots", isOn: excludeBotsBinding)
+                .font(.subheadline)
         }
     }
 
@@ -224,16 +245,17 @@ struct DetailScreen: View {
     @ViewBuilder
     private var breakdownSections: some View {
         if store.state == .loaded {
+            // Each breakdown gets its own card. On the wider macOS column they sit
+            // side by side (the cards stretch to fill each half); on the narrow
+            // iPhone they stack, picking up the same 20pt gap as the other cards.
             #if os(macOS)
-            HStack(alignment: .top, spacing: 24) {
-                countryBreakdown
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                sourceBreakdown
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(alignment: .top, spacing: 20) {
+                DetailCard { countryBreakdown }
+                DetailCard { sourceBreakdown }
             }
             #else
-            countryBreakdown
-            sourceBreakdown
+            DetailCard { countryBreakdown }
+            DetailCard { sourceBreakdown }
             #endif
         }
     }
@@ -350,6 +372,29 @@ struct DetailScreen: View {
     }
 }
 
+// MARK: - Section card
+
+/// A card surface for one detail section: the project's standard translucent
+/// fill — `Color.primary.opacity(0.06)`, the same convention the metric tiles
+/// already use and which compiles on both iOS and macOS (no `secondarySystem…`
+/// platform-only colors) — rounded to 12pt with 16pt of internal padding, and
+/// stretched to the column width. Every section on the screen is wrapped in one,
+/// so the page reads as evenly-spaced cards identically on both platforms.
+private struct DetailCard<Content: View>: View {
+    private let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(16)
+            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 // MARK: - Metric card
 
 /// One metric: a big lifetime figure over a smaller per-period figure.
@@ -393,7 +438,10 @@ private struct MetricCard: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        // A touch more opaque than the enclosing summary card (0.06) so the tiles
+        // read as raised sub-cards rather than blending into it. Same convention
+        // (translucent `primary`), so it compiles on iOS and macOS alike.
+        .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
