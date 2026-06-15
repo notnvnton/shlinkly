@@ -357,9 +357,9 @@ public actor ShlinkClient {
             if let problem = try? decoder.decode(ProblemDetails.self, from: data) {
                 throw Self.mapProblem(problem)
             }
-            throw ShlinkError.invalidResponse
+            throw ShlinkError.unexpectedStatus(http.statusCode)
         default:
-            throw ShlinkError.invalidResponse
+            throw ShlinkError.unexpectedStatus(http.statusCode)
         }
     }
 
@@ -390,9 +390,9 @@ public actor ShlinkClient {
             if let problem = try? decoder.decode(ProblemDetails.self, from: data) {
                 throw Self.mapProblem(problem)
             }
-            throw ShlinkError.invalidResponse
+            throw ShlinkError.unexpectedStatus(http.statusCode)
         default:
-            throw ShlinkError.invalidResponse
+            throw ShlinkError.unexpectedStatus(http.statusCode)
         }
     }
 

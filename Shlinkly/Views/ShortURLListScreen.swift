@@ -24,6 +24,9 @@ struct ShortURLListScreen: View {
     @Binding private var showSettings: Bool
     /// Read for the delete-confirmation preferences.
     @Environment(AppModel.self) private var appModel
+    /// Drives refresh-on-foreground: when the app/window becomes active again the
+    /// current list is re-queried. Tracked on both platforms.
+    @Environment(\.scenePhase) private var scenePhase
     @State private var didInitialLoad = false
     /// The create/edit sheet, or `nil` when none is shown.
     @State private var formRoute: FormRoute?
@@ -60,7 +63,6 @@ struct ShortURLListScreen: View {
     /// built when the toolbar renders, not at click time, and reading the
     /// pasteboard on macOS is synchronous and ungated, so refreshing is cheap.
     @State private var clipboardHasURL = false
-    @Environment(\.scenePhase) private var scenePhase
     /// Drives the detail column of the split view. macOS selects on tap; iOS
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
@@ -143,15 +145,23 @@ struct ShortURLListScreen: View {
         } message: { message in
             Text(message)
         }
-        #if os(macOS)
         .onChange(of: scenePhase) { _, phase in
-            // Re-check the clipboard when the window comes forward (e.g. after the
-            // user copied a URL in another app) so the "+" menu reflects it.
-            if phase == .active {
-                Task { clipboardHasURL = await Clipboard.containsProbableURL() }
+            guard phase == .active else { return }
+            // Returning to the foreground (app re-activated on iOS / window became
+            // active on macOS): re-query the current list so changes made elsewhere
+            // — another device, the web UI, the menu-bar "Generate" action — show
+            // up. Skip the first activation; the initial `.task` load covers it, so
+            // this never double-loads on launch. `refresh()` keeps the current rows
+            // on screen and re-fetches the active page/search/sort.
+            if didInitialLoad {
+                Task { await store.refresh() }
             }
+            #if os(macOS)
+            // Also re-check the clipboard so the "+" menu reflects a URL copied
+            // while the app was in the background.
+            Task { clipboardHasURL = await Clipboard.containsProbableURL() }
+            #endif
         }
-        #endif
         .task {
             #if os(macOS)
             clipboardHasURL = await Clipboard.containsProbableURL()
@@ -560,10 +570,28 @@ struct ShortURLListScreen: View {
         }
         #else
         settingsToolbar
+        refreshToolbar
         sortToolbar
         addToolbar
         #endif
     }
+
+    #if os(macOS)
+    /// macOS manual refresh. The Mac has no pull-to-refresh gesture, so the
+    /// toolbar button is how the user reloads on demand; it re-queries the active
+    /// page/search/sort via ``ShortURLListStore/refresh()``, keeping the current
+    /// rows visible. (iOS uses `.refreshable` pull-to-refresh instead.)
+    @ToolbarContentBuilder
+    private var refreshToolbar: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            Button {
+                Task { await store.refresh() }
+            } label: {
+                Label("Refresh", systemImage: "arrow.clockwise")
+            }
+        }
+    }
+    #endif
 
     /// The gear that opens Settings, pinned to the top-leading corner.
     @ToolbarContentBuilder
