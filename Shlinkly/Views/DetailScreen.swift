@@ -299,7 +299,7 @@ struct DetailScreen: View {
                 }
             }
         case .loaded:
-            VisitsBarChart(data: store.dailyCounts, yMax: store.chartYDomainMax, xDomain: store.chartXDomain)
+            VisitsBarChart(data: store.dailyCounts, yMax: store.chartYDomainMax)
                 .frame(height: 220)
         }
     }
