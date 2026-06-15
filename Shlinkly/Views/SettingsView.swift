@@ -72,10 +72,14 @@ struct SettingsView: View {
                 isPresented: removalBinding,
                 presenting: pendingRemoval
             ) { server in
-                Button("Remove from All Devices", role: .destructive) { appModel.removeInstance(server.id) }
+                Button(server.keyStorage == .iCloud ? "Remove from All Devices" : "Remove", role: .destructive) {
+                    appModel.removeInstance(server.id)
+                }
                 Button("Cancel", role: .cancel) {}
-            } message: { _ in
-                Text("This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too.")
+            } message: { server in
+                Text(server.keyStorage == .iCloud
+                    ? "This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too."
+                    : "This server is stored only on this device, so removing it won't affect your other devices.")
             }
         }
     }
