@@ -160,6 +160,12 @@ struct ServerFormView: View {
                     Spacer()
                 }
             }
+            // Match the Save/Connect button's pill shape and height
+            // (`.controlSize(.large)`), but keep `.bordered` rather than
+            // `.borderedProminent` so the fill/colour is unchanged — it stays
+            // destructive red, never the prominent blue.
+            .buttonStyle(.bordered)
+            .controlSize(.large)
         }
     }
 

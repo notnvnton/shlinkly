@@ -25,10 +25,25 @@ struct VisitsBarChart: View {
                 y: .value("Visits", point.count)
             )
             .foregroundStyle(Color.accentColor)
+            // Round the top of each bar for a softer, less "spreadsheet" look.
+            .cornerRadius(5)
         }
         .chartYScale(domain: 0...yMax)
         .chartYAxis {
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 4))
+            // Sparse Y ticks, each with a single thin, solid, very light guide
+            // line — no dashes, no heavy gridlines.
+            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
+                    .foregroundStyle(Color.primary.opacity(0.08))
+                AxisValueLabel()
+            }
+        }
+        .chartXAxis {
+            // Just the dates along the bottom: no vertical gridlines or ticks, so
+            // the chart no longer reads like a spreadsheet grid.
+            AxisMarks(values: .automatic(desiredCount: 4)) {
+                AxisValueLabel()
+            }
         }
         // Purely a display chart — no selection or tap. Opt out of hit testing
         // so it can never capture the enclosing ScrollView's pan gesture.
