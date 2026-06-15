@@ -161,10 +161,14 @@ struct ServerFormView: View {
             Button("Keep Editing", role: .cancel) {}
         }
         .alert("Remove \"\(displayName)\"?", isPresented: $showRemoveConfirm) {
-            Button("Remove from All Devices", role: .destructive) { onRemove?() }
+            Button(model.editingKeyStorage == .iCloud ? "Remove from All Devices" : "Remove", role: .destructive) {
+                onRemove?()
+            }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too.")
+            Text(model.editingKeyStorage == .iCloud
+                ? "This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too."
+                : "This server is stored only on this device, so removing it won't affect your other devices.")
         }
         .alert("Couldn't save the server", isPresented: saveErrorBinding) {
             Button("OK", role: .cancel) {}

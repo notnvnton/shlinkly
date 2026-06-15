@@ -98,6 +98,14 @@ public final class ServerFormModel {
         return false
     }
 
+    /// The persisted key-storage of the server being edited (the value the form
+    /// opened with), or `nil` in add mode. The removal warning reads this — the
+    /// same `keyStorage` source the Settings list's iCloud badge uses — so the two
+    /// always agree, even if the user changed the picker without saving.
+    public var editingKeyStorage: KeyStorage? {
+        isEdit ? initialKeyStorage : nil
+    }
+
     /// Whether any editable field differs from its value when the form opened
     /// (Add: an empty form; Edit: the server's current values). Drives the
     /// guard against closing the form with unsaved edits. The Key storage mode is
