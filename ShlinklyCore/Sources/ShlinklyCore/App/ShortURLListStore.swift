@@ -101,7 +101,7 @@ public final class ShortURLListStore {
         loadTask?.cancel()
         do {
             let result = try await fetchPage(1)
-            apply(firstPage: result)
+            applyRefreshed(result)
         } catch {
             guard !(error is CancellationError) else { return }
             if items.isEmpty { state = .error(ShlinkError.userFacingMessage(for: error)) }
@@ -255,6 +255,30 @@ public final class ShortURLListStore {
         currentPage = result.pagination.currentPage
         totalPages = result.pagination.pagesCount
         state = result.data.isEmpty ? .empty : .loaded
+    }
+
+    /// Applies a *refresh* result silently — the path for pull-to-refresh, the
+    /// macOS toolbar button, and the foreground re-query.
+    ///
+    /// Unlike ``apply(firstPage:)`` (the initial / full-screen load) it never
+    /// flips to ``ViewState/loading`` and never clears the visible rows mid-fetch.
+    /// Crucially, each `@Observable` property is written **only when its value
+    /// actually changed**: a refresh that returns identical data — the common
+    /// foreground case — therefore produces *no* mutation, hence no SwiftUI
+    /// invalidation, no List diff pass, and no flicker. When the data did change,
+    /// only `items` is reassigned, and since `ForEach` keys rows by
+    /// ``ShortURL/id`` the List diffs by identity (unchanged rows stay put)
+    /// rather than rebuilding.
+    ///
+    /// The network request and JSON decoding already happened off the main actor,
+    /// inside the ``ShlinkClient`` actor; all that runs here on the main actor is
+    /// these equality checks plus, at most, a few light assignments.
+    private func applyRefreshed(_ result: Pagination<ShortURL>) {
+        if items != result.data { items = result.data }
+        if currentPage != result.pagination.currentPage { currentPage = result.pagination.currentPage }
+        if totalPages != result.pagination.pagesCount { totalPages = result.pagination.pagesCount }
+        let newState: ViewState = result.data.isEmpty ? .empty : .loaded
+        if state != newState { state = newState }
     }
 
     private func fetchPage(_ page: Int) async throws -> Pagination<ShortURL> {
