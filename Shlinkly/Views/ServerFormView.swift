@@ -26,7 +26,19 @@ struct ServerFormView: View {
     /// no swipe — a way to delete a server, and works on iOS too.
     private let onRemove: (() -> Void)?
 
+    /// True when the form is presented modally (the Settings sheet): the form then
+    /// owns its Cancel button and guards against discarding unsaved edits.
+    /// Onboarding pushes the form instead and leaves this off — the nav back
+    /// button stays the way out and there's nothing yet to lose.
+    private let presentedAsSheet: Bool
+
+    /// Dismisses the form when it's a sheet (Settings). Unused in the pushed
+    /// onboarding flow, where the nav back button handles it.
+    @Environment(\.dismiss) private var dismiss
+
     @State private var showRemoveConfirm = false
+    /// Drives the "You have unsaved changes" confirmation before a dirty close.
+    @State private var showDiscardConfirm = false
     /// The Keychain-save failure to show in an alert, or `nil`. Set when
     /// ``onConnected`` throws so the user sees *why* connecting didn't complete.
     @State private var saveErrorMessage: String?
@@ -40,10 +52,12 @@ struct ServerFormView: View {
     init(
         mode: ServerFormModel.Mode,
         existingKey: String = "",
+        presentedAsSheet: Bool = false,
         onRemove: (() -> Void)? = nil,
         onConnected: @escaping (ServerInstance, String) throws -> Void
     ) {
         _model = State(initialValue: ServerFormModel(mode: mode, existingKey: existingKey))
+        self.presentedAsSheet = presentedAsSheet
         self.onRemove = onRemove
         self.onConnected = onConnected
     }
@@ -128,6 +142,24 @@ struct ServerFormView: View {
         .formStyle(.grouped)
         .frame(minWidth: 460, minHeight: 520)
         #endif
+        .toolbar {
+            // The form owns its Cancel when presented modally (Settings), so the
+            // close can route through the unsaved-changes guard. On macOS this
+            // `.cancellationAction` button is also what the Esc key triggers, so
+            // Esc lands in the same confirmation when there are pending edits.
+            if presentedAsSheet {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { attemptClose() }
+                }
+            }
+        }
+        // Block the silent interactive dismiss (iOS swipe-down; macOS click-away)
+        // while edits are pending, so changes can't be lost without a choice.
+        .interactiveDismissDisabled(presentedAsSheet && model.isDirty)
+        .alert("You have unsaved changes", isPresented: $showDiscardConfirm) {
+            Button("Don't Save", role: .destructive) { dismiss() }
+            Button("Keep Editing", role: .cancel) {}
+        }
         .alert("Remove \"\(displayName)\"?", isPresented: $showRemoveConfirm) {
             Button("Remove from All Devices", role: .destructive) { onRemove?() }
             Button("Cancel", role: .cancel) {}
@@ -146,6 +178,16 @@ struct ServerFormView: View {
     /// Drives the save-failure alert; clears the message when dismissed.
     private var saveErrorBinding: Binding<Bool> {
         Binding(get: { saveErrorMessage != nil }, set: { if !$0 { saveErrorMessage = nil } })
+    }
+
+    /// Cancel/close intent. With unsaved edits it asks first (via the discard
+    /// confirmation); otherwise it closes straight away, as before.
+    private func attemptClose() {
+        if model.isDirty {
+            showDiscardConfirm = true
+        } else {
+            dismiss()
+        }
     }
 
     /// Edit-only destructive action to delete this server (no swipe needed).
