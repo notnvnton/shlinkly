@@ -12,6 +12,8 @@
 		5D921DFC2FE18CA800C98C47 /* ShareExtensionMac.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5D921E032FE18D6600C98C47 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D921E022FE18D6600C98C47 /* ShlinklyCore */; };
 		5DB943AD2FDA0E87000E5E11 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5DB943AC2FDA0E87000E5E11 /* ShlinklyCore */; };
+		5DC0FFEE0000000000000002 /* ShareCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC0FFEE0000000000000001 /* ShareCreateView.swift */; };
+		5DC0FFEE0000000000000003 /* ShareCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC0FFEE0000000000000001 /* ShareCreateView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -50,6 +52,7 @@
 		5D3060762FDA043400B01249 /* Shlinkly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shlinkly.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtensionIOS.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtensionMac.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		5DC0FFEE0000000000000001 /* ShareCreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareCreateView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -127,9 +130,18 @@
 				5D3060782FDA043400B01249 /* Shlinkly */,
 				5D921D4F2FE183E200C98C47 /* ShareExtensionIOS */,
 				5D921DF12FE18CA800C98C47 /* ShareExtensionMac */,
+				5DC0FFEE0000000000000004 /* ShareUI */,
 				5D921D5F2FE187F200C98C47 /* Frameworks */,
 				5D3060772FDA043400B01249 /* Products */,
 			);
+			sourceTree = "<group>";
+		};
+		5DC0FFEE0000000000000004 /* ShareUI */ = {
+			isa = PBXGroup;
+			children = (
+				5DC0FFEE0000000000000001 /* ShareCreateView.swift */,
+			);
+			path = ShareUI;
 			sourceTree = "<group>";
 		};
 		5D3060772FDA043400B01249 /* Products */ = {
@@ -305,6 +317,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5DC0FFEE0000000000000002 /* ShareCreateView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -312,6 +325,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				5DC0FFEE0000000000000003 /* ShareCreateView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
