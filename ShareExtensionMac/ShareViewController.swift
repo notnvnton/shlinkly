@@ -2,40 +2,52 @@
 //  ShareViewController.swift
 //  ShareExtensionMac
 //
-//  Created by Anton Hodge on 16.06.26.
-//
 
-import Cocoa
+import AppKit
+import SwiftUI
 
+/// Thin host: pulls the shared URL out of the extension context, then hosts the
+/// shared ``ShareCreateView`` (which does the resolve + create) in an
+/// `NSHostingController` pinned to the edges, sized for a share popover.
+/// `onDone` completes the request. Programmatic — no xib (`loadView` builds the
+/// view), so the template `nibName` is gone.
 class ShareViewController: NSViewController {
 
-    override var nibName: NSNib.Name? {
-        return NSNib.Name("ShareViewController")
-    }
+    private static let contentSize = NSSize(width: 360, height: 220)
 
     override func loadView() {
-        super.loadView()
-    
-        // Insert code here to customize the view
-        let item = self.extensionContext!.inputItems[0] as! NSExtensionItem
-        if let attachments = item.attachments {
-            NSLog("Attachments = %@", attachments as NSArray)
-        } else {
-            NSLog("No Attachments")
+        view = NSView(frame: NSRect(origin: .zero, size: Self.contentSize))
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        preferredContentSize = Self.contentSize
+        Task { @MainActor in
+            let longURL = await ShareItemReader.extractURL(from: extensionContext)
+            present(longURL: longURL)
         }
     }
 
-    @IBAction func send(_ sender: AnyObject?) {
-        let outputItem = NSExtensionItem()
-        // Complete implementation by setting the appropriate value on the output item
-    
-        let outputItems = [outputItem]
-        self.extensionContext!.completeRequest(returningItems: outputItems, completionHandler: nil)
-}
+    @MainActor
+    private func present(longURL: String?) {
+        // No URL in the share → nothing to do; close cleanly rather than crash.
+        guard let longURL else { complete(); return }
 
-    @IBAction func cancel(_ sender: AnyObject?) {
-        let cancelError = NSError(domain: NSCocoaErrorDomain, code: NSUserCancelledError, userInfo: nil)
-        self.extensionContext!.cancelRequest(withError: cancelError)
+        let host = NSHostingController(
+            rootView: ShareCreateView(longURL: longURL) { [weak self] in self?.complete() }
+        )
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
+        NSLayoutConstraint.activate([
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
     }
 
+    private func complete() {
+        extensionContext?.completeRequest(returningItems: nil)
+    }
 }
