@@ -34,8 +34,8 @@ struct ShlinklyApp: App {
         // windows, and crucially a lone window lets AppKit deliver `shlinkly://`
         // opens to `AppDelegate.application(_:open:)`. A `WindowGroup` with
         // `.handlesExternalEvents(matching: [])` swallowed those URLs, so "Open in
-        // Shlinkly" did nothing — the regression this fixes. The menu bar's
-        // `openWindow(id: "main")` still opens/focuses this same window.
+        // Shlinkly" did nothing. The AppDelegate takes this window over: it hides
+        // (never closes) it and shows it again directly through AppKit.
         Window("Shlinkly", id: "main") {
             rootContent
         }
@@ -45,14 +45,10 @@ struct ShlinklyApp: App {
         // present — it's Shlinkly's permanent home; the "menu bar only" setting
         // governs only whether the Dock icon also appears. Because the icon never
         // goes away, a "hidden everywhere" state is structurally unreachable.
-        //
-        // A custom label (vs. the title+image initializer) lets it capture the
-        // `openWindow` action and hand the AppDelegate a way to reopen the main
-        // window after it's closed (or in accessory mode).
         MenuBarExtra {
             MenuBarContent(appModel: appModel)
         } label: {
-            MenuBarLabel(appDelegate: appDelegate)
+            MenuBarLabel()
         }
         .menuBarExtraStyle(.menu)
         #else
@@ -96,16 +92,10 @@ struct ShlinklyApp: App {
 }
 
 #if os(macOS)
-/// The menu-bar item's label. A `View` (rather than the title+image
-/// `MenuBarExtra` initializer) so it can read `openWindow` from its environment
-/// and stash a reopen closure on the AppDelegate. The menu-bar item is always
-/// mounted, so this fires once and the captured action stays valid for reopening
-/// the main `Window` even after it's closed or while the app is in accessory
-/// (menu-bar-only) mode — where the window's own root view is unmounted.
+/// The menu-bar item's label: the brand chevrons, rendered as a template image.
+/// Showing the window is the AppDelegate's job (it holds the live `NSWindow` and
+/// shows it via AppKit), so this label is purely the icon — no `openWindow`.
 private struct MenuBarLabel: View {
-    let appDelegate: AppDelegate
-    @Environment(\.openWindow) private var openWindow
-
     var body: some View {
         Image("MenuBarIcon")
             .renderingMode(.template)
@@ -113,9 +103,6 @@ private struct MenuBarLabel: View {
             .scaledToFit()
             .frame(width: 18, height: 18)
             .accessibilityLabel("Shlinkly")
-            .onAppear {
-                appDelegate.reopenMainWindow = { openWindow(id: "main") }
-            }
     }
 }
 #endif
