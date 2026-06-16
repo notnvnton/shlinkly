@@ -30,13 +30,6 @@ struct ShareCreateView: View {
     /// Opens a `shlinkly://` deep link in the main app, then closes the
     /// extension. Implemented per platform by the host.
     let onOpenInApp: (URL) -> Void
-    /// macOS only: presents the host's `NSSharingServicePicker` for the short URL,
-    /// because SwiftUI `ShareLink` doesn't populate services in a sandboxed macOS
-    /// share extension. Unused on iOS (which uses `ShareLink` directly) — the
-    /// no-op default keeps the iOS host's call site unchanged. A `var` (not
-    /// `let`) so the synthesized memberwise initializer exposes it as a defaulted
-    /// parameter — a `let` with a default is excluded from that initializer.
-    var onShare: (URL) -> Void = { _ in }
 
     /// Bumped by Retry to re-run the resolve+create task via `.task(id:)`.
     @State private var attempt = 0
@@ -215,31 +208,21 @@ struct ShareCreateView: View {
                 .keyboardShortcut(.defaultAction)
         }
         #else
-        // macOS: ShareLink doesn't populate services inside a sandboxed share
-        // extension, so Share routes to the host's NSSharingServicePicker via
-        // `onShare`. All three buttons share one native size/shape — the app's
-        // Save/Cancel look: `.controlSize(.large)`, full-width bordered push
-        // buttons — with emphasis only via prominence (Share is prominent).
+        // macOS: no Share button. SwiftUI ShareLink comes up empty in a sandboxed
+        // share extension, and macOS share extensions can't reach the messengers
+        // people actually want (WhatsApp/Telegram aren't offered). The short URL is
+        // already on the clipboard, so the user can paste it anywhere — we just
+        // offer Open in Shlinkly and Done, stacked full-width in the app's
+        // Save/Cancel style (.controlSize(.large)); Done is the prominent action.
         VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                if let url = URL(string: shortURL) {
-                    Button {
-                        onShare(url)
-                    } label: {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
+            if let deepLink = deepLink(shortCode: shortCode) {
+                Button {
+                    onOpenInApp(deepLink)
+                } label: {
+                    Label("Open in Shlinkly", systemImage: "arrow.up.forward.app")
+                        .frame(maxWidth: .infinity)
                 }
-                if let deepLink = deepLink(shortCode: shortCode) {
-                    Button {
-                        onOpenInApp(deepLink)
-                    } label: {
-                        Label("Open in Shlinkly", systemImage: "arrow.up.forward.app")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
-                }
+                .buttonStyle(.bordered)
             }
             Button {
                 onDone()
@@ -247,7 +230,7 @@ struct ShareCreateView: View {
                 Text("Done")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.borderedProminent)
             .keyboardShortcut(.defaultAction)
         }
         .controlSize(.large)
