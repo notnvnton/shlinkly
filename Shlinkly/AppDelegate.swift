@@ -26,6 +26,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A deep link that arrived before ``appModel`` was wired up (cold launch).
     private var bufferedDeepLink: DeepLink?
 
+    /// Reopens the main window. Captured from the always-mounted menu-bar label
+    /// (see `MenuBarLabel` in `ShlinklyApp`): the SwiftUI `openWindow` action stays
+    /// valid for reopening the `Window` scene even after the window is closed or
+    /// while the app is in accessory (menu-bar-only) mode — whereas the window's
+    /// own root view unmounts on close and can't be the capture point. `nil` only
+    /// until that label first appears.
+    var reopenMainWindow: (() -> Void)?
+
     /// Keep the app running after its last window is closed. The main scene is a
     /// lone `Window`, and AppKit's default is to terminate when the final window
     /// closes — so clicking the window's close button quit the whole app (menu-bar
@@ -33,6 +41,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// the menu bar's "Open Shlinkly" reopens this same window via `openWindow`.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
+    }
+
+    /// A Dock-icon click (or other reactivation) with no visible windows reopens
+    /// the main window. Because `applicationShouldTerminateAfterLastWindowClosed`
+    /// returns `false`, the app lives on after its window closes, and this is the
+    /// route back to it. In accessory (menu-bar-only) mode there's no Dock icon,
+    /// but the menu bar's "Open Shlinkly" reaches the same window via the same
+    /// reopen path — so it's covered either way.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag {
+            reopenMainWindow?()
+        }
+        return true
     }
 
     /// Apply the saved "menu bar only" preference *before* launch finishes, so the
@@ -70,12 +91,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         NSApp.activate(ignoringOtherApps: true)
+        // If the window was closed, the navigation shell (`ConfiguredRoot`) is
+        // unmounted and won't consume the parked link — reopen so it remounts,
+        // reads `pendingDeepLink` on its initial `onChange`, and navigates.
+        if !isMainWindowVisible {
+            reopenMainWindow?()
+        }
     }
 
     private func flushBufferedDeepLink() {
         guard let appModel, let buffered = bufferedDeepLink else { return }
         appModel.pendingDeepLink = buffered
         bufferedDeepLink = nil
+    }
+
+    /// Whether the main window is currently on screen. The menu-bar item's host
+    /// window and any popovers aren't titled, so a visible *titled* window is the
+    /// real main `Window`.
+    private var isMainWindowVisible: Bool {
+        NSApp.windows.contains { $0.styleMask.contains(.titled) && $0.isVisible }
     }
 }
 #endif
