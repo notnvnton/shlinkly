@@ -23,7 +23,17 @@ private final class FakeKeychain: KeychainStoring, @unchecked Sendable {
     }
     func allRecords() -> [KeychainRecord] {
         lock.lock(); defer { lock.unlock() }
-        return Array(store.values)
+        return store.values.filter { $0.account != KeychainStore.activeInstanceAccount }
+    }
+    func readActiveInstanceID() -> String? {
+        readSecret(account: KeychainStore.activeInstanceAccount)
+    }
+    func writeActiveInstanceID(_ id: String?) throws {
+        if let id {
+            try save(KeychainRecord(account: KeychainStore.activeInstanceAccount, secret: id, metadata: Data(), synchronizable: false))
+        } else {
+            try delete(account: KeychainStore.activeInstanceAccount)
+        }
     }
     func record(account: String) -> KeychainRecord? {
         lock.lock(); defer { lock.unlock() }
@@ -40,6 +50,8 @@ private struct FailingKeychain: KeychainStoring {
     func readSecret(account: String) -> String? { nil }
     func delete(account: String) throws {}
     func allRecords() -> [KeychainRecord] { [] }
+    func readActiveInstanceID() -> String? { nil }
+    func writeActiveInstanceID(_ id: String?) throws {}
 }
 
 /// A throwaway `UserDefaults` suite so tests don't touch the real domain.
