@@ -63,6 +63,9 @@ struct ShortURLListScreen: View {
     /// built when the toolbar renders, not at click time, and reading the
     /// pasteboard on macOS is synchronous and ungated, so refreshing is cheap.
     @State private var clipboardHasURL = false
+    /// True while a toolbar-initiated refresh is in flight, so the button shows a
+    /// small inline spinner instead of a full-screen overlay — the list stays put.
+    @State private var isRefreshing = false
     /// Drives the detail column of the split view. macOS selects on tap; iOS
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
@@ -585,10 +588,22 @@ struct ShortURLListScreen: View {
     private var refreshToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
             Button {
-                Task { await store.refresh() }
+                Task {
+                    isRefreshing = true
+                    await store.refresh()
+                    isRefreshing = false
+                }
             } label: {
-                Label("Refresh", systemImage: "arrow.clockwise")
+                // A small inline spinner while refreshing — the list stays on
+                // screen and its rows diff in place when the data lands.
+                if isRefreshing {
+                    ProgressView()
+                        .controlSize(.small)
+                } else {
+                    Label("Refresh", systemImage: "arrow.clockwise")
+                }
             }
+            .disabled(isRefreshing)
         }
     }
     #endif
