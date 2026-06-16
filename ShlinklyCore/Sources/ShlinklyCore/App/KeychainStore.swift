@@ -41,8 +41,15 @@ public protocol KeychainStoring: Sendable {
     /// Removes the item for `account` (local or synced). A missing item is fine.
     func delete(account: String) throws
     /// Every stored record — local *and* synced — reconstructed from item
-    /// attributes. Order is unspecified; the caller sorts.
+    /// attributes. Order is unspecified; the caller sorts. The reserved
+    /// active-instance item (see ``readActiveInstanceID()``) is *not* included.
     func allRecords() -> [KeychainRecord]
+    /// The per-device "active server" selection (a server's UUID string), or
+    /// `nil` if none is stored. Lives in the shared Keychain — not
+    /// `UserDefaults` — so a separate process (a Share Extension) can read it.
+    func readActiveInstanceID() -> String?
+    /// Persists the per-device active-server selection. Passing `nil` clears it.
+    func writeActiveInstanceID(_ id: String?) throws
 }
 
 /// Errors surfaced by ``KeychainStore``.
@@ -63,9 +70,9 @@ public enum KeychainError: Error, Equatable {
 
 /// A `kSecClassGenericPassword`-backed ``KeychainStoring``.
 ///
-/// `service` is the bundle id; `account` is the instance's UUID, so each server's
-/// record is isolated. The API key is the item's secret data; the non-secret
-/// metadata rides in `kSecAttrGeneric`.
+/// `service` is a fixed shared constant (``sharedService``); `account` is the
+/// instance's UUID, so each server's record is isolated. The API key is the
+/// item's secret data; the non-secret metadata rides in `kSecAttrGeneric`.
 ///
 /// Both platforms use the **data-protection keychain** so an iCloud-stored record
 /// syncs across the user's devices through iCloud Keychain. Items are
@@ -75,13 +82,29 @@ public enum KeychainError: Error, Equatable {
 /// `kSecAttrSynchronizableAny` to match either form — *crucially* the listing
 /// query too, or synced records wouldn't come back.
 ///
-/// On macOS this needs a keychain access group, which is provided automatically
-/// by the app's code signature (the target is signed with a team) — so no
-/// explicit `keychain-access-groups` entitlement is added.
+/// Items live in the app's **default keychain access group** — no
+/// `kSecAttrAccessGroup` is set on the queries, so reads and writes use the first
+/// entry of the `keychain-access-groups` entitlement,
+/// `$(AppIdentifierPrefix)de.ahodge.Shlinkly` (declared in `Shlinkly.entitlements`).
+/// A Share Extension that declares the same group shares these items.
 public struct KeychainStore: KeychainStoring {
+    /// The `kSecAttrService` shared by the app and its extensions. Hard-coded
+    /// rather than `Bundle.main.bundleIdentifier` (which differs per process) so
+    /// a Share Extension queries the *same* service the app wrote under and finds
+    /// its records. The value equals the app's bundle id, so records written
+    /// before this constant existed still match — no migration needed.
+    public static let sharedService = "de.ahodge.Shlinkly"
+
+    /// The reserved `kSecAttrAccount` under which the per-device active-server
+    /// selection is stored — a single item alongside the server records, in the
+    /// same group and service. Not a UUID, so it can never collide with a
+    /// server's account (always a UUID string) and is filtered out of
+    /// ``allRecords()``.
+    public static let activeInstanceAccount = "active-instance-id"
+
     private let service: String
 
-    public init(service: String = Bundle.main.bundleIdentifier ?? "de.ahodge.Shlinkly") {
+    public init(service: String = KeychainStore.sharedService) {
         self.service = service
     }
 
@@ -162,11 +185,31 @@ public struct KeychainStore: KeychainStoring {
 
         return items.compactMap { item in
             guard let account = item[kSecAttrAccount as String] as? String,
+                  // The reserved active-instance item shares the service/group but
+                  // is not a server — keep it out of the rebuilt instance list.
+                  account != Self.activeInstanceAccount,
                   let metadata = item[kSecAttrGeneric as String] as? Data else { return nil }
             let secret = (item[kSecValueData as String] as? Data)
                 .flatMap { String(data: $0, encoding: .utf8) } ?? ""
             let synchronizable = (item[kSecAttrSynchronizable as String] as? Bool) ?? false
             return KeychainRecord(account: account, secret: secret, metadata: metadata, synchronizable: synchronizable)
         }
+    }
+
+    public func readActiveInstanceID() -> String? {
+        readSecret(account: Self.activeInstanceAccount)
+    }
+
+    public func writeActiveInstanceID(_ id: String?) throws {
+        guard let id else {
+            try delete(account: Self.activeInstanceAccount)
+            return
+        }
+        // Per-device selection: synchronizable stays off (this mirrors the old
+        // UserDefaults.standard behaviour — the active server doesn't travel
+        // between devices). `readSecret` already matches with SynchronizableAny,
+        // so this local item is found on read. No metadata, so it carries an
+        // empty blob in kSecAttrGeneric.
+        try save(KeychainRecord(account: Self.activeInstanceAccount, secret: id, metadata: Data(), synchronizable: false))
     }
 }

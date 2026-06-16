@@ -8,10 +8,12 @@ import Observation
 /// full across the user's devices, not just their keys. It performs no network
 /// work — ``AppModel`` turns the active instance into a live client.
 ///
-/// The *active selection* is a per-device choice, so it stays in `UserDefaults`
-/// rather than syncing. The list itself is never cached locally; it's rebuilt
-/// from the Keychain on init and via ``reload()`` (e.g. at scene activation), so
-/// a server added on another device appears on the next activation.
+/// The *active selection* is a per-device choice, so it doesn't sync — but it
+/// lives in the shared Keychain (a reserved, non-synchronizable item) rather than
+/// `UserDefaults`, so a separate process (a Share Extension) can read which
+/// server is active. The list itself is never cached locally; it's rebuilt from
+/// the Keychain on init and via ``reload()`` (e.g. at scene activation), so a
+/// server added on another device appears on the next activation.
 ///
 /// Persistence is eager: every mutation writes through immediately, so a crash
 /// can't lose a just-added server.
@@ -30,6 +32,9 @@ public final class InstanceStore {
     /// out of ``ServerInstance`` so the model the rest of the app sees stays lean.
     private var addedAt: [UUID: Date] = [:]
 
+    /// Legacy `UserDefaults` key the active selection used to live under. Now
+    /// read only for a one-shot migration into the shared Keychain (see
+    /// ``resolveActiveID(in:)``); the value is no longer written here.
     private static let activeIDKey = "shlinkly.activeInstanceID"
 
     /// - Parameters:
@@ -85,13 +90,27 @@ public final class InstanceStore {
         instances = decoded.map(\.instance)
         addedAt = Dictionary(decoded.map { ($0.instance.id, $0.addedAt) }, uniquingKeysWith: { first, _ in first })
 
-        if let raw = defaults.string(forKey: Self.activeIDKey),
-           let id = UUID(uuidString: raw),
-           instances.contains(where: { $0.id == id }) {
-            activeInstanceID = id
-        } else {
-            activeInstanceID = instances.first?.id
+        activeInstanceID = resolveActiveID(in: instances)
+    }
+
+    /// Resolves the active selection against the freshly-rebuilt `instances`: the
+    /// stored per-device choice is honoured when its server still exists,
+    /// otherwise the first server is used (or none when the list is empty).
+    ///
+    /// The choice lives in the shared Keychain. One-shot migration: it used to
+    /// live in `UserDefaults.standard`, so when the Keychain has none yet, adopt
+    /// the legacy default and write it through. The legacy key is left in place.
+    private func resolveActiveID(in instances: [ServerInstance]) -> UUID? {
+        var storedRaw = keychain.readActiveInstanceID()
+        if storedRaw == nil, let legacy = defaults.string(forKey: Self.activeIDKey) {
+            storedRaw = legacy
+            try? keychain.writeActiveInstanceID(legacy)
         }
+        if let storedRaw, let id = UUID(uuidString: storedRaw),
+           instances.contains(where: { $0.id == id }) {
+            return id
+        }
+        return instances.first?.id
     }
 
     // MARK: - Mutations
@@ -155,11 +174,10 @@ public final class InstanceStore {
     }
 
     private func persistActiveID() {
-        if let activeInstanceID {
-            defaults.set(activeInstanceID.uuidString, forKey: Self.activeIDKey)
-        } else {
-            defaults.removeObject(forKey: Self.activeIDKey)
-        }
+        // The shared Keychain is the source of truth (a separate process reads it).
+        // A nil selection clears the reserved item. Best-effort: a write failure
+        // here only affects which server is preselected next launch.
+        try? keychain.writeActiveInstanceID(activeInstanceID?.uuidString)
     }
 }
 
