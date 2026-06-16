@@ -7,17 +7,62 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5D921D612FE187F200C98C47 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D921D602FE187F200C98C47 /* ShlinklyCore */; };
 		5DB943AD2FDA0E87000E5E11 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5DB943AC2FDA0E87000E5E11 /* ShlinklyCore */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		5D921D562FE183E200C98C47 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D30606E2FDA043400B01249 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5D921D4D2FE183E200C98C47;
+			remoteInfo = ShareExtensionIOS;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		5D921D592FE183E200C98C47 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		5D3060762FDA043400B01249 /* Shlinkly.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Shlinkly.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtensionIOS.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5D921D5C2FE183E200C98C47 /* Exceptions for "ShareExtensionIOS" folder in "ShareExtensionIOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5D3060782FDA043400B01249 /* Shlinkly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Shlinkly;
+			sourceTree = "<group>";
+		};
+		5D921D4F2FE183E200C98C47 /* ShareExtensionIOS */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5D921D5C2FE183E200C98C47 /* Exceptions for "ShareExtensionIOS" folder in "ShareExtensionIOS" target */,
+			);
+			path = ShareExtensionIOS;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +76,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5D921D4B2FE183E200C98C47 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D921D612FE187F200C98C47 /* ShlinklyCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -38,6 +91,8 @@
 			isa = PBXGroup;
 			children = (
 				5D3060782FDA043400B01249 /* Shlinkly */,
+				5D921D4F2FE183E200C98C47 /* ShareExtensionIOS */,
+				5D921D5F2FE187F200C98C47 /* Frameworks */,
 				5D3060772FDA043400B01249 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -46,8 +101,16 @@
 			isa = PBXGroup;
 			children = (
 				5D3060762FDA043400B01249 /* Shlinkly.app */,
+				5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		5D921D5F2FE187F200C98C47 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -60,10 +123,12 @@
 				5D3060722FDA043400B01249 /* Sources */,
 				5D3060732FDA043400B01249 /* Frameworks */,
 				5D3060742FDA043400B01249 /* Resources */,
+				5D921D592FE183E200C98C47 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				5D921D572FE183E200C98C47 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5D3060782FDA043400B01249 /* Shlinkly */,
@@ -76,6 +141,29 @@
 			productReference = 5D3060762FDA043400B01249 /* Shlinkly.app */;
 			productType = "com.apple.product-type.application";
 		};
+		5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D921D5D2FE183E200C98C47 /* Build configuration list for PBXNativeTarget "ShareExtensionIOS" */;
+			buildPhases = (
+				5D921D4A2FE183E200C98C47 /* Sources */,
+				5D921D4B2FE183E200C98C47 /* Frameworks */,
+				5D921D4C2FE183E200C98C47 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5D921D4F2FE183E200C98C47 /* ShareExtensionIOS */,
+			);
+			name = ShareExtensionIOS;
+			packageProductDependencies = (
+				5D921D602FE187F200C98C47 /* ShlinklyCore */,
+			);
+			productName = ShareExtensionIOS;
+			productReference = 5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -87,6 +175,9 @@
 				LastUpgradeCheck = 2650;
 				TargetAttributes = {
 					5D3060752FDA043400B01249 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					5D921D4D2FE183E200C98C47 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -109,12 +200,20 @@
 			projectRoot = "";
 			targets = (
 				5D3060752FDA043400B01249 /* Shlinkly */,
+				5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
 		5D3060742FDA043400B01249 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5D921D4C2FE183E200C98C47 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -131,7 +230,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5D921D4A2FE183E200C98C47 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		5D921D572FE183E200C98C47 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				ios,
+			);
+			target = 5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */;
+			targetProxy = 5D921D562FE183E200C98C47 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		5D30607F2FDA043600B01249 /* Debug */ = {
@@ -274,10 +391,10 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -320,10 +437,10 @@
 				"INFOPLIST_KEY_UIStatusBarStyle[sdk=iphonesimulator*]" = UIStatusBarStyleDefault;
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
 				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
-				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				"LD_RUNPATH_SEARCH_PATHS[sdk=macosx*]" = "@executable_path/../Frameworks";
-				MACOSX_DEPLOYMENT_TARGET = 26.5;
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -337,6 +454,77 @@
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		5D921D5A2FE183E200C98C47 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtensionIOS/ShareExtensionIOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U28AHSTDJ3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShareExtensionIOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shlinkly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly.ShareExtensionIOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5D921D5B2FE183E200C98C47 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ShareExtensionIOS/ShareExtensionIOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = U28AHSTDJ3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShareExtensionIOS/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shlinkly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly.ShareExtensionIOS;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
 		};
@@ -361,6 +549,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		5D921D5D2FE183E200C98C47 /* Build configuration list for PBXNativeTarget "ShareExtensionIOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D921D5A2FE183E200C98C47 /* Debug */,
+				5D921D5B2FE183E200C98C47 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -371,6 +568,11 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		5D921D602FE187F200C98C47 /* ShlinklyCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 5DB943AB2FDA0E87000E5E11 /* XCLocalSwiftPackageReference "ShlinklyCore" */;
+			productName = ShlinklyCore;
+		};
 		5DB943AC2FDA0E87000E5E11 /* ShlinklyCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = ShlinklyCore;
