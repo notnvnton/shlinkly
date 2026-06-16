@@ -101,6 +101,13 @@ struct ShortURLListScreen: View {
         }
     }
 
+    /// The spring that drives row add/delete/reorder. Declared on the List (keyed
+    /// to `store.items`, which is `Equatable`) rather than wrapped around the
+    /// store's mutations — a `withAnimation` inside the `@Observable` store's
+    /// async paths never reaches this view, so the animation was lost. Driving it
+    /// from the value here is what actually animates the List's native row diff.
+    private static let listAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.8)
+
     var body: some View {
         VStack(spacing: 0) {
             if let tag = store.activeTag {
@@ -431,6 +438,7 @@ struct ShortURLListScreen: View {
         }
         .listStyle(.inset)
         .refreshable { await store.refresh() }
+        .animation(Self.listAnimation, value: store.items)
         #else
         List(selection: $selectedIDs) {
             ForEach(store.items) { item in
@@ -480,6 +488,7 @@ struct ShortURLListScreen: View {
         .scrollDismissesKeyboard(.interactively)
         .environment(\.editMode, editModeBinding)
         .refreshable { await store.refresh() }
+        .animation(Self.listAnimation, value: store.items)
         .shortURLGroupDeleteConfirmation(count: selectedIDs.count, isPresented: $showGroupDeleteConfirm) {
             Task { await runGroupDelete() }
         }
