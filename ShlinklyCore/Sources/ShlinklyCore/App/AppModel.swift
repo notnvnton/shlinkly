@@ -13,6 +13,13 @@ import Observation
 @MainActor
 @Observable
 public final class AppModel {
+    /// The single app-wide model instance. On macOS the main window is hosted from
+    /// `AppDelegate` (outside the SwiftUI scene graph), so that window and the
+    /// SwiftUI scenes (Settings, the menu-bar item) must share *one* model — this
+    /// one. iOS uses it too, for parity. `init()` does no heavy work (bootstrap is a
+    /// separate call), so lazy creation on first access is safe.
+    public static let shared = AppModel()
+
     /// The server currently in use, or `nil` when none is configured.
     public private(set) var activeInstance: ServerInstance?
 
