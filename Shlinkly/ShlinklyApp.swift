@@ -107,7 +107,11 @@ private struct MenuBarLabel: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        Image(systemName: "link")
+        Image("MenuBarIcon")
+            .renderingMode(.template)
+            .resizable()
+            .scaledToFit()
+            .frame(width: 18, height: 18)
             .accessibilityLabel("Shlinkly")
             .onAppear {
                 appDelegate.reopenMainWindow = { openWindow(id: "main") }
