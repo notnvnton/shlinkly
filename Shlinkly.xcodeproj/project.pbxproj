@@ -70,11 +70,21 @@
 			);
 			target = 5D921DEF2FE18CA800C98C47 /* ShareExtensionMac */;
 		};
+		5DC0FFEE0000000000000005 /* Exceptions for "Shlinkly" folder in "Shlinkly" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5D3060752FDA043400B01249 /* Shlinkly */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		5D3060782FDA043400B01249 /* Shlinkly */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5DC0FFEE0000000000000005 /* Exceptions for "Shlinkly" folder in "Shlinkly" target */,
+			);
 			path = Shlinkly;
 			sourceTree = "<group>";
 		};
@@ -477,6 +487,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shlinkly/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
@@ -523,6 +534,7 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Shlinkly/Info.plist;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
