@@ -26,6 +26,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// A deep link that arrived before ``appModel`` was wired up (cold launch).
     private var bufferedDeepLink: DeepLink?
 
+    /// Keep the app running after its last window is closed. The main scene is a
+    /// lone `Window`, and AppKit's default is to terminate when the final window
+    /// closes — so clicking the window's close button quit the whole app (menu-bar
+    /// item and all). Returning `false` keeps the process alive with no windows;
+    /// the menu bar's "Open Shlinkly" reopens this same window via `openWindow`.
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        false
+    }
+
     /// AppKit delivers `shlinkly://` opens here (the app uses a single `Window`, so
     /// these reach the delegate). We park the parsed link on the shared model — the
     /// open window's navigation shell observes it and selects the link — and bring
