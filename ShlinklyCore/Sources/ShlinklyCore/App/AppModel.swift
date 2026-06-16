@@ -20,6 +20,13 @@ public final class AppModel {
     /// Rebuilt whenever the active server changes.
     public private(set) var client: ShlinkClient?
 
+    /// A deep link awaiting navigation. The scene's `onOpenURL` parses an
+    /// incoming `shlinkly://` URL and sets it here; the active navigation shell
+    /// observes it, resolves the target (list cache or a fetch), navigates, and
+    /// clears it. Lives on this `@MainActor` model — the one object both the URL
+    /// handler and the navigation shell share — so neither needs to know the other.
+    public var pendingDeepLink: DeepLink?
+
     /// The persisted servers + active selection. Exposed so Settings can list and
     /// edit them; mutate it through this model's methods so ``client`` stays in
     /// sync.

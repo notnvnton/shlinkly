@@ -44,6 +44,16 @@ struct ShlinklyApp: App {
                         appModel.refreshFromStore()
                     }
                 }
+                // shlinkly://link/{shortCode} → land on that link's detail. Handled
+                // here on the existing scene's root, so on macOS the URL is
+                // delivered to the open window (and brings it forward) rather than
+                // spawning a second one. The navigation shell consumes the parsed
+                // link; junk URLs parse to nil and are ignored.
+                .onOpenURL { url in
+                    if let deepLink = DeepLink.parse(url) {
+                        appModel.pendingDeepLink = deepLink
+                    }
+                }
         }
 
         #if os(macOS)
