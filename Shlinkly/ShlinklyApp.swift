@@ -18,12 +18,6 @@ struct ShlinklyApp: App {
     /// so a deep link routes into the existing window instead of `WindowGroup`
     /// opening a second one. Also the home for future macOS lifecycle bits.
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-
-    /// Whether the menu-bar icon is shown. Mirrors the Settings toggle through
-    /// the shared `UserDefaults` key, and drives ``MenuBarExtra``'s `isInserted`.
-    /// Defaults to on. Hiding it removes only the menu-bar item — the
-    /// `WindowGroup` keeps the app alive, so the app doesn't quit.
-    @AppStorage("shlinkly.showInMenuBar") private var showInMenuBar = true
     #endif
 
     init() {
@@ -47,10 +41,11 @@ struct ShlinklyApp: App {
         }
 
         // A menu-bar dropdown for quick actions, in the same process as the main
-        // window so it shares the one active server. `isInserted` reflects the
-        // Settings toggle (via `menuBarInsertion`), so unchecking it hides the
-        // icon without quitting.
-        MenuBarExtra("Shlinkly", systemImage: "link", isInserted: menuBarInsertion) {
+        // window so it shares the one active server. The menu-bar item is always
+        // present — it's Shlinkly's permanent home; the "menu bar only" setting
+        // governs only whether the Dock icon also appears. Because the icon never
+        // goes away, a "hidden everywhere" state is structurally unreachable.
+        MenuBarExtra("Shlinkly", systemImage: "link") {
             MenuBarContent(appModel: appModel)
         }
         .menuBarExtraStyle(.menu)
@@ -92,27 +87,4 @@ struct ShlinklyApp: App {
             .onAppear { appDelegate.appModel = appModel }
             #endif
     }
-
-    #if os(macOS)
-    /// The `isInserted` binding for the menu-bar item.
-    ///
-    /// `MenuBarExtra` syncs its live insertion state *back* through this binding
-    /// during scene updates. Passing `$showInMenuBar` (an `@AppStorage`) straight
-    /// in means that write-back hits `UserDefaults` **mid view-update**, which
-    /// publishes a change that re-invalidates this scene, which re-renders and
-    /// writes the same value again — an unbounded "Publishing changes from within
-    /// view updates" loop that pegs the main thread and hangs the app on launch.
-    /// Guarding so we only write on an *actual* change (the redundant launch-time
-    /// write-back never is one) breaks the cycle, while the Settings toggle still
-    /// flips the stored value to show/hide the icon.
-    private var menuBarInsertion: Binding<Bool> {
-        let stored = $showInMenuBar
-        return Binding(
-            get: { stored.wrappedValue },
-            set: { newValue in
-                if newValue != stored.wrappedValue { stored.wrappedValue = newValue }
-            }
-        )
-    }
-    #endif
 }

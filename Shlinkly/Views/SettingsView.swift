@@ -18,16 +18,14 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
 
     #if os(macOS)
-    /// Shows/hides the menu-bar icon. Shares the `UserDefaults` key with the
-    /// app's ``MenuBarExtra`` `isInserted` binding, so toggling here adds or
-    /// removes the icon live.
-    @AppStorage("shlinkly.showInMenuBar") private var showInMenuBar = true
-
-    /// Shows/hides the app's Dock icon. `true` → `.regular` (in the Dock),
-    /// `false` → `.accessory` (menu-bar only). Defaults to on, matching the app's
-    /// default activation policy. ``AppDelegate`` reads this key early at launch
+    /// Whether Shlinkly lives in the menu bar only (no Dock icon). `false` (the
+    /// default) → `.regular` (Dock + menu bar, the prior behavior); `true` →
+    /// `.accessory` (menu-bar only). ``AppDelegate`` reads this key early at launch
     /// (no Dock flicker), and the `onChange` below applies a flip live.
-    @AppStorage("macShowInDock") private var macShowInDock = true
+    @AppStorage("macMenuBarOnly") private var macMenuBarOnly = false
+
+    /// Drives the inline help popover next to the presence toggle.
+    @State private var showPresenceHelp = false
     #endif
 
     /// The add/edit server form to present, or `nil`.
@@ -52,8 +50,7 @@ struct SettingsView: View {
             Form {
                 serversSection
                 #if os(macOS)
-                menuBarSection
-                dockSection
+                presenceSection
                 #endif
                 deletionSection
                 aboutSection
@@ -61,10 +58,10 @@ struct SettingsView: View {
             #if os(macOS)
             .formStyle(.grouped)
             .frame(minWidth: 460, minHeight: 560)
-            // Apply a Dock-visibility flip live. The toggle is only reachable from
-            // this sheet, so `onChange` here always fires for an actual change.
-            .onChange(of: macShowInDock) { _, showInDock in
-                AppDelegate.applyDockVisibility(showInDock)
+            // Apply a presence flip live. The toggle is only reachable from this
+            // sheet, so `onChange` here always fires for an actual change.
+            .onChange(of: macMenuBarOnly) { _, menuBarOnly in
+                AppDelegate.applyPresence(menuBarOnly: menuBarOnly)
             }
             #endif
             .navigationTitle("Settings")
@@ -147,28 +144,36 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: - Menu bar (macOS)
+    // MARK: - Presence (macOS)
 
     #if os(macOS)
-    private var menuBarSection: some View {
+    /// The single presence control. Shlinkly is always in the menu bar; this
+    /// toggle decides whether it *also* appears in the Dock. The "?" button by the
+    /// label opens a popover explaining the trade-off, keeping the row uncluttered
+    /// while the detail is one tap away.
+    private var presenceSection: some View {
         Section {
-            Toggle("Show in menu bar", isOn: $showInMenuBar)
-        } header: {
-            Text("Menu Bar")
-        } footer: {
-            Text("Adds a Shlinkly icon to the menu bar for quick actions like generating a short link from the clipboard.")
-        }
-    }
-
-    // MARK: - Dock (macOS)
-
-    private var dockSection: some View {
-        Section {
-            Toggle("Show Shlinkly in the Dock", isOn: $macShowInDock)
+            Toggle(isOn: $macMenuBarOnly) {
+                HStack(spacing: 6) {
+                    Text("Show in menu bar only")
+                    Button {
+                        showPresenceHelp = true
+                    } label: {
+                        Image(systemName: "questionmark.circle")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityLabel("About “Show in menu bar only”")
+                    .popover(isPresented: $showPresenceHelp) {
+                        Text("When on, Shlinkly lives only in the menu bar — no Dock icon. It's the tidiest, most convenient way to keep Shlinkly handy. When off, Shlinkly appears in both the Dock and the menu bar.")
+                            .font(.callout)
+                            .padding()
+                            .frame(width: 260)
+                    }
+                }
+            }
         } header: {
             Text("Dock")
-        } footer: {
-            Text("Turn off to keep Shlinkly in the menu bar only.")
         }
     }
     #endif
