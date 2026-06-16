@@ -92,11 +92,10 @@ struct MenuBarContent: View {
         }
     }
 
-    /// Brings the app and its main window to the front, opening one if the user
-    /// had closed it (the menu-bar item keeps the app running with no windows).
-    /// Routes through the AppDelegate's single show path so the Dock icon is
-    /// restored first — without it, AppKit won't let the window activate in
-    /// menu-bar-only (accessory) mode.
+    /// Brings the app and its main window to the front, recreating the window if the
+    /// user had closed it (the menu-bar item keeps the app running with no windows).
+    /// Routes through the AppDelegate's single show path, which asks the system to
+    /// reopen the app — restoring `.regular`, the Dock icon, and the window.
     private func openMainWindow() {
         (NSApp.delegate as? AppDelegate)?.showMainWindow()
     }
