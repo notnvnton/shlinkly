@@ -35,6 +35,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
+    /// Apply the saved "Show in Dock" preference *before* launch finishes, so the
+    /// Dock icon never flickers on for menu-bar-only users. An unset key means
+    /// "show" (the default), so read the raw object and treat `nil` as `true`
+    /// rather than letting `UserDefaults`' false-for-missing hide the Dock.
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        let showInDock = UserDefaults.standard.object(forKey: "macShowInDock") as? Bool ?? true
+        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
+    }
+
+    /// Applies the "Show in Dock" preference to the already-running app, in
+    /// response to the Settings toggle. `.regular` shows the Dock icon (and app
+    /// switcher entry); `.accessory` hides it, leaving the always-present menu-bar
+    /// item as Shlinkly's only presence. When re-showing the Dock icon we also
+    /// activate the app, so it (and its window) comes forward with the new icon.
+    static func applyDockVisibility(_ showInDock: Bool) {
+        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
+        if showInDock {
+            NSApp.activate(ignoringOtherApps: true)
+        }
+    }
+
     /// AppKit delivers `shlinkly://` opens here (the app uses a single `Window`, so
     /// these reach the delegate). We park the parsed link on the shared model — the
     /// open window's navigation shell observes it and selects the link — and bring

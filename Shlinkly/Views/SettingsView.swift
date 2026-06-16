@@ -22,6 +22,12 @@ struct SettingsView: View {
     /// app's ``MenuBarExtra`` `isInserted` binding, so toggling here adds or
     /// removes the icon live.
     @AppStorage("shlinkly.showInMenuBar") private var showInMenuBar = true
+
+    /// Shows/hides the app's Dock icon. `true` → `.regular` (in the Dock),
+    /// `false` → `.accessory` (menu-bar only). Defaults to on, matching the app's
+    /// default activation policy. ``AppDelegate`` reads this key early at launch
+    /// (no Dock flicker), and the `onChange` below applies a flip live.
+    @AppStorage("macShowInDock") private var macShowInDock = true
     #endif
 
     /// The add/edit server form to present, or `nil`.
@@ -47,6 +53,7 @@ struct SettingsView: View {
                 serversSection
                 #if os(macOS)
                 menuBarSection
+                dockSection
                 #endif
                 deletionSection
                 aboutSection
@@ -54,6 +61,11 @@ struct SettingsView: View {
             #if os(macOS)
             .formStyle(.grouped)
             .frame(minWidth: 460, minHeight: 560)
+            // Apply a Dock-visibility flip live. The toggle is only reachable from
+            // this sheet, so `onChange` here always fires for an actual change.
+            .onChange(of: macShowInDock) { _, showInDock in
+                AppDelegate.applyDockVisibility(showInDock)
+            }
             #endif
             .navigationTitle("Settings")
             #if os(iOS)
@@ -145,6 +157,18 @@ struct SettingsView: View {
             Text("Menu Bar")
         } footer: {
             Text("Adds a Shlinkly icon to the menu bar for quick actions like generating a short link from the clipboard.")
+        }
+    }
+
+    // MARK: - Dock (macOS)
+
+    private var dockSection: some View {
+        Section {
+            Toggle("Show Shlinkly in the Dock", isOn: $macShowInDock)
+        } header: {
+            Text("Dock")
+        } footer: {
+            Text("Turn off to keep Shlinkly in the menu bar only.")
         }
     }
     #endif
