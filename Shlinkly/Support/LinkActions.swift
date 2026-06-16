@@ -20,16 +20,13 @@ enum LinkActions {
     /// One-shot creation of a short URL from a long URL, using the active
     /// instance's `client`, with the server defaults (no tags, no custom slug).
     ///
-    /// Reuses the Phase 1 create call (``ShlinkClient/createShortURL(_:)``); it
-    /// just builds the minimal request. A missing scheme gets `https://`
-    /// prepended, matching the create form's `normalizedLongURL` so a pasted
-    /// `example.com` resolves the same way here as in the form. Returns the
+    /// A thin app-side wrapper: the normalisation + create logic now lives in
+    /// ``ShlinkClient/createShortURL(fromLongURL:)`` in ``ShlinklyCore`` so the
+    /// app and both Share Extensions create links identically. Returns the
     /// created ``ShortURL`` (whose `shortUrl` the caller copies); throws on
     /// failure. Shared by the macOS menu bar's "Generate from clipboard" and the
-    /// upcoming Share Extension, so they create links identically.
+    /// Share Extension.
     static func createShortURL(fromLongURL longURL: String, using client: ShlinkClient) async throws -> ShortURL {
-        let trimmed = longURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        let normalized = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
-        return try await client.createShortURL(CreateShortURLRequest(longUrl: normalized))
+        try await client.createShortURL(fromLongURL: longURL)
     }
 }

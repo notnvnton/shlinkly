@@ -186,6 +186,77 @@ struct InstanceStoreTests {
     }
 }
 
+/// Writes a server record (metadata + key) into the fake the same shape
+/// ``InstanceStore`` would, but without touching the active-id item — so the
+/// resolver tests control the active selection explicitly.
+private func saveServer(_ keychain: FakeKeychain, _ instance: ServerInstance, key: String) throws {
+    let metadata = try JSONEncoder().encode(StoredMetadata(instance: instance, addedAt: Date()))
+    try keychain.save(KeychainRecord(
+        account: instance.id.uuidString,
+        secret: key,
+        metadata: metadata,
+        synchronizable: false
+    ))
+}
+
+struct ActiveServerResolverTests {
+    @Test("Returns the active server (and a client) when the active id is set and the key exists")
+    func resolvesActiveServer() throws {
+        let keychain = FakeKeychain()
+        let first = makeInstance(host: "one.example.com")
+        let second = makeInstance(host: "two.example.com")
+        try saveServer(keychain, first, key: "k1")
+        try saveServer(keychain, second, key: "k2")
+        try keychain.writeActiveInstanceID(second.id.uuidString)
+
+        let resolved = try ActiveServerResolver.resolve(keychain: keychain)
+        #expect(resolved.instance.id == second.id)
+    }
+
+    @Test("Falls back to the only server when no active id is stored")
+    func fallsBackToSoleServer() throws {
+        let keychain = FakeKeychain()
+        let only = makeInstance()
+        try saveServer(keychain, only, key: "k")
+        // No writeActiveInstanceID — nothing marks an active server.
+
+        let resolved = try ActiveServerResolver.resolve(keychain: keychain)
+        #expect(resolved.instance.id == only.id)
+    }
+
+    @Test("Throws noActiveServer when no servers are configured")
+    func noServersThrows() {
+        let keychain = FakeKeychain()
+        #expect(throws: ActiveServerError.noActiveServer) {
+            try ActiveServerResolver.resolve(keychain: keychain)
+        }
+    }
+
+    @Test("Throws noActiveServer when the list is ambiguous and no active id is stored")
+    func ambiguousListThrows() throws {
+        let keychain = FakeKeychain()
+        try saveServer(keychain, makeInstance(host: "one.example.com"), key: "k1")
+        try saveServer(keychain, makeInstance(host: "two.example.com"), key: "k2")
+        // Two servers, no active selection → can't guess.
+
+        #expect(throws: ActiveServerError.noActiveServer) {
+            try ActiveServerResolver.resolve(keychain: keychain)
+        }
+    }
+
+    @Test("Throws missingKey when the server record exists but its key is absent")
+    func missingKeyThrows() throws {
+        let keychain = FakeKeychain()
+        let only = makeInstance()
+        // Metadata present, but the secret (API key) is empty.
+        try saveServer(keychain, only, key: "")
+
+        #expect(throws: ActiveServerError.missingKey) {
+            try ActiveServerResolver.resolve(keychain: keychain)
+        }
+    }
+}
+
 @MainActor
 struct AppPreferencesTests {
     @Test("Both delete-confirmation switches default to on when never set")
