@@ -185,7 +185,11 @@ public final class InstanceStore {
 /// item. Decoupled from ``ServerInstance`` so the stored shape can carry extra
 /// bookkeeping (the insertion timestamp that orders the list) without widening
 /// the model the rest of the app sees.
-private struct StoredMetadata: Codable {
+///
+/// Module-internal (not file-private) because ``ActiveServerResolver`` decodes
+/// the same blob to rebuild a ``ServerInstance`` straight from the Keychain — the
+/// one definition of how a server is stored, so the two can't drift.
+struct StoredMetadata: Codable {
     var id: UUID
     var name: String?
     var baseURL: URL

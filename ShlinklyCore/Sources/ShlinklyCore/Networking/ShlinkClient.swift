@@ -260,6 +260,20 @@ public actor ShlinkClient {
         return try await send(request)
     }
 
+    /// One-shot creation of a short URL from a raw long URL, with the server
+    /// defaults (no tags, no custom slug).
+    ///
+    /// Normalises the input the way the create form does — trims whitespace and
+    /// prepends `https://` when no scheme is present — so a pasted `example.com`
+    /// resolves identically here. This is the single home of the "long URL →
+    /// ``ShortURL``" step, shared by the app (menu bar / list) and the Share
+    /// Extensions, so they all create links the same way.
+    public func createShortURL(fromLongURL longURL: String) async throws -> ShortURL {
+        let trimmed = longURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        let normalized = trimmed.contains("://") ? trimmed : "https://\(trimmed)"
+        return try await createShortURL(CreateShortURLRequest(longUrl: normalized))
+    }
+
     /// Updates a short URL via `PATCH /short-urls/{shortCode}`.
     ///
     /// Only the editable fields are sent (see ``EditShortURLRequest``); the short
