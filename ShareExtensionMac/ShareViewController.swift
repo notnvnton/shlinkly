@@ -34,7 +34,11 @@ class ShareViewController: NSViewController {
         guard let longURL else { complete(); return }
 
         let host = NSHostingController(
-            rootView: ShareCreateView(longURL: longURL) { [weak self] in self?.complete() }
+            rootView: ShareCreateView(
+                longURL: longURL,
+                onDone: { [weak self] in self?.complete() },
+                onOpenInApp: { [weak self] url in self?.open(url) }
+            )
         )
         addChild(host)
         host.view.translatesAutoresizingMaskIntoConstraints = false
@@ -45,6 +49,12 @@ class ShareViewController: NSViewController {
             host.view.topAnchor.constraint(equalTo: view.topAnchor),
             host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
+    }
+
+    /// Launches the main app with the deep link, then closes the extension.
+    private func open(_ url: URL) {
+        NSWorkspace.shared.open(url)
+        complete()
     }
 
     private func complete() {
