@@ -35,23 +35,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// Apply the saved "Show in Dock" preference *before* launch finishes, so the
+    /// Apply the saved "menu bar only" preference *before* launch finishes, so the
     /// Dock icon never flickers on for menu-bar-only users. An unset key means
-    /// "show" (the default), so read the raw object and treat `nil` as `true`
-    /// rather than letting `UserDefaults`' false-for-missing hide the Dock.
+    /// "not menu-bar-only" (the default — Dock + menu bar), so read the raw object
+    /// and treat `nil` as `false`.
     func applicationWillFinishLaunching(_ notification: Notification) {
-        let showInDock = UserDefaults.standard.object(forKey: "macShowInDock") as? Bool ?? true
-        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
+        let menuBarOnly = UserDefaults.standard.object(forKey: "macMenuBarOnly") as? Bool ?? false
+        NSApp.setActivationPolicy(menuBarOnly ? .accessory : .regular)
     }
 
-    /// Applies the "Show in Dock" preference to the already-running app, in
+    /// Applies the "menu bar only" preference to the already-running app, in
     /// response to the Settings toggle. `.regular` shows the Dock icon (and app
     /// switcher entry); `.accessory` hides it, leaving the always-present menu-bar
-    /// item as Shlinkly's only presence. When re-showing the Dock icon we also
-    /// activate the app, so it (and its window) comes forward with the new icon.
-    static func applyDockVisibility(_ showInDock: Bool) {
-        NSApp.setActivationPolicy(showInDock ? .regular : .accessory)
-        if showInDock {
+    /// item as Shlinkly's only presence. When the Dock icon returns (`.regular`)
+    /// we also activate the app, so it (and its window) comes forward with it.
+    static func applyPresence(menuBarOnly: Bool) {
+        NSApp.setActivationPolicy(menuBarOnly ? .accessory : .regular)
+        if !menuBarOnly {
             NSApp.activate(ignoringOtherApps: true)
         }
     }
