@@ -18,9 +18,6 @@ class ShareViewController: NSViewController {
     // all with padding. The old 360x220 cropped the top/bottom on device.
     private static let contentSize = NSSize(width: 380, height: 400)
 
-    /// Held while the share menu is open so the picker isn't deallocated mid-display.
-    private var sharingPicker: NSSharingServicePicker?
-
     override func loadView() {
         view = NSView(frame: NSRect(origin: .zero, size: Self.contentSize))
     }
@@ -43,8 +40,7 @@ class ShareViewController: NSViewController {
             rootView: ShareCreateView(
                 longURL: longURL,
                 onDone: { [weak self] in self?.complete() },
-                onOpenInApp: { [weak self] url in self?.open(url) },
-                onShare: { [weak self] url in self?.share(url) }
+                onOpenInApp: { [weak self] url in self?.open(url) }
             )
         )
         addChild(host)
@@ -62,16 +58,6 @@ class ShareViewController: NSViewController {
     private func open(_ url: URL) {
         NSWorkspace.shared.open(url)
         complete()
-    }
-
-    /// Presents the system share menu (Messages, Mail, AirDrop, third-party apps)
-    /// for the short URL, anchored to the host view. Used instead of SwiftUI
-    /// `ShareLink`, which comes up empty in a sandboxed macOS share extension. The
-    /// extension stays open afterwards so the user can still tap Done.
-    private func share(_ url: URL) {
-        let picker = NSSharingServicePicker(items: [url])
-        sharingPicker = picker
-        picker.show(relativeTo: view.bounds, of: view, preferredEdge: .minY)
     }
 
     private func complete() {
