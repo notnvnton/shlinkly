@@ -20,7 +20,6 @@ struct MenuBarContent: View {
     /// because a `MenuBarExtra` scene doesn't inherit the `WindowGroup`'s
     /// environment.
     let appModel: AppModel
-    @Environment(\.openWindow) private var openWindow
 
     /// Outcome of the last "Generate from clipboard". Shown as a disabled status
     /// row so the feedback survives the menu closing on click; `nil` until the
@@ -95,15 +94,11 @@ struct MenuBarContent: View {
 
     /// Brings the app and its main window to the front, opening one if the user
     /// had closed it (the menu-bar item keeps the app running with no windows).
+    /// Routes through the AppDelegate's single show path so the Dock icon is
+    /// restored first — without it, AppKit won't let the window activate in
+    /// menu-bar-only (accessory) mode.
     private func openMainWindow() {
-        NSApp.activate(ignoringOtherApps: true)
-        // The menu-bar item's host window isn't titled, so a titled window is the
-        // real `WindowGroup` window.
-        if let window = NSApp.windows.first(where: { $0.styleMask.contains(.titled) }) {
-            window.makeKeyAndOrderFront(nil)
-        } else {
-            openWindow(id: "main")
-        }
+        (NSApp.delegate as? AppDelegate)?.showMainWindow()
     }
 }
 

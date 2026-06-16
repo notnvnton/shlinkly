@@ -43,15 +43,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         false
     }
 
-    /// A Dock-icon click (or other reactivation) with no visible windows reopens
-    /// the main window. Because `applicationShouldTerminateAfterLastWindowClosed`
-    /// returns `false`, the app lives on after its window closes, and this is the
-    /// route back to it. In accessory (menu-bar-only) mode there's no Dock icon,
-    /// but the menu bar's "Open Shlinkly" reaches the same window via the same
-    /// reopen path — so it's covered either way.
+    /// A Dock-icon click (or other reactivation) with no visible windows shows the
+    /// main window. Because `applicationShouldTerminateAfterLastWindowClosed`
+    /// returns `false`, the app lives on after its window closes, and this is one
+    /// route back to it — funnelled through ``showMainWindow()`` like every other.
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         if !flag {
-            reopenMainWindow?()
+            showMainWindow()
         }
         return true
     }
@@ -59,20 +57,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Apply the saved "menu bar only" preference *before* launch finishes, so the
     /// Dock icon never flickers on for menu-bar-only users. An unset key means
     /// "not menu-bar-only" (the default — Dock + menu bar), so read the raw object
-    /// and treat `nil` as `false`.
+    /// and treat `nil` as `false`. Also start watching for the main window closing,
+    /// so the Dock icon can be hidden only once the window is actually gone.
     func applicationWillFinishLaunching(_ notification: Notification) {
         let menuBarOnly = UserDefaults.standard.object(forKey: "macMenuBarOnly") as? Bool ?? false
         NSApp.setActivationPolicy(menuBarOnly ? .accessory : .regular)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(mainWindowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
     }
 
-    /// Applies the "menu bar only" preference to the already-running app, in
-    /// response to the Settings toggle. `.regular` shows the Dock icon (and app
-    /// switcher entry); `.accessory` hides it, leaving the always-present menu-bar
-    /// item as Shlinkly's only presence. When the Dock icon returns (`.regular`)
-    /// we also activate the app, so it (and its window) comes forward with it.
+    /// The deferred half of ``applyPresence(menuBarOnly:)``: when the main window
+    /// closes while "menu bar only" is on, drop to `.accessory` to finally hide the
+    /// Dock icon. Re-checked on the next tick, after the closing window has left
+    /// `NSApp.windows`, and only if no main window remains.
+    @objc private func mainWindowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow, Self.isMainWindow(window) else { return }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                let menuBarOnly = UserDefaults.standard.object(forKey: "macMenuBarOnly") as? Bool ?? false
+                if menuBarOnly && !Self.isMainWindowVisible {
+                    NSApp.setActivationPolicy(.accessory)
+                }
+            }
+        }
+    }
+
+    /// Applies the "menu bar only" preference as an *effective* activation policy.
+    ///
+    /// The naïve version (`.accessory` whenever the toggle is on) hid the open
+    /// window — `.accessory` hides every window *and* bars it from reactivating,
+    /// which is why "Open Shlinkly" then did nothing. So while a window is open we
+    /// stay `.regular` and defer hiding the Dock until the window closes (handled by
+    /// ``mainWindowWillClose(_:)``). Turning the toggle off always returns to
+    /// `.regular` and activates.
     static func applyPresence(menuBarOnly: Bool) {
-        NSApp.setActivationPolicy(menuBarOnly ? .accessory : .regular)
-        if !menuBarOnly {
+        if menuBarOnly {
+            if isMainWindowVisible {
+                // Keep the Dock (and the window) until the window is closed.
+                NSApp.setActivationPolicy(.regular)
+                mainWindow?.canHide = false
+            } else {
+                NSApp.setActivationPolicy(.accessory)
+            }
+        } else {
+            NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
         }
     }
@@ -90,13 +123,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 bufferedDeepLink = deepLink
             }
         }
-        NSApp.activate(ignoringOtherApps: true)
-        // If the window was closed, the navigation shell (`ConfiguredRoot`) is
-        // unmounted and won't consume the parked link — reopen so it remounts,
-        // reads `pendingDeepLink` on its initial `onChange`, and navigates.
-        if !isMainWindowVisible {
-            reopenMainWindow?()
-        }
+        // Route through the single show path: it restores the Dock icon (so the
+        // window can activate even in menu-bar-only mode) and focuses or reopens the
+        // window. If it was closed, `ConfiguredRoot` remounts and consumes
+        // `pendingDeepLink` on its initial `onChange`.
+        showMainWindow()
     }
 
     private func flushBufferedDeepLink() {
@@ -105,11 +136,54 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         bufferedDeepLink = nil
     }
 
-    /// Whether the main window is currently on screen. The menu-bar item's host
-    /// window and any popovers aren't titled, so a visible *titled* window is the
-    /// real main `Window`.
-    private var isMainWindowVisible: Bool {
-        NSApp.windows.contains { $0.styleMask.contains(.titled) && $0.isVisible }
+    // MARK: - Showing the window
+
+    /// The single funnel for every "show the window" action — the menu's "Open
+    /// Shlinkly", an incoming deep link, and a Dock-icon reopen all route here.
+    ///
+    /// Restoring the Dock icon (`.regular`) comes *first*: AppKit refuses to make a
+    /// window key while the app is `.accessory` (no Dock icon), which is exactly why
+    /// "Open Shlinkly" did nothing in menu-bar-only mode. Then we focus the existing
+    /// window, or — only if it was closed — reopen the single `Window(id: "main")`
+    /// scene, so there's never a second window. Activation is deferred one runloop
+    /// tick: doing it inline leaves the window (and the menu) unclickable until the
+    /// user changes focus, a known AppKit quirk. (If a test shows the window still
+    /// landing behind, add a ~150 ms delay before `makeKeyAndOrderFront`.)
+    func showMainWindow() {
+        NSApp.setActivationPolicy(.regular)
+
+        if Self.mainWindow == nil {
+            reopenMainWindow?()
+        }
+
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                NSApp.activate(ignoringOtherApps: true)
+                let window = Self.mainWindow
+                window?.canHide = false   // don't let a later `.accessory` hide it
+                window?.makeKeyAndOrderFront(nil)
+            }
+        }
+    }
+
+    // MARK: - Main window
+
+    /// Identifies the app's main `Window` (id `"main"`): the lone titled, non-sheet
+    /// window. The menu-bar item's host window and popovers aren't titled, and the
+    /// Settings sheet reports `isSheet`, so this picks out the real window. (The
+    /// title isn't usable — `navigationTitle` overrides it to the server name.)
+    static func isMainWindow(_ window: NSWindow) -> Bool {
+        window.styleMask.contains(.titled) && !window.isSheet
+    }
+
+    /// The main window if it currently exists (whether or not it's on screen).
+    static var mainWindow: NSWindow? {
+        NSApp.windows.first { isMainWindow($0) }
+    }
+
+    /// Whether the main window currently exists *and* is on screen.
+    static var isMainWindowVisible: Bool {
+        NSApp.windows.contains { isMainWindow($0) && $0.isVisible }
     }
 }
 #endif
