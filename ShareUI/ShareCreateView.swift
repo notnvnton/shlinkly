@@ -17,19 +17,25 @@ import AppKit
 
 /// The one screen both Share Extensions show. Zero-tap by design: on appear it
 /// resolves the active server, creates the short link, copies it, and shows the
-/// result with actions (Share / Open in Shlinkly / Done) — no Create button, no
-/// server/tags pickers (v1). Talks only to ``ActiveServerResolver`` and
+/// result with a Done button — no Create button, no server/tags pickers (v1).
+/// The extra action differs by platform: iOS adds Share (the native share
+/// sheet), macOS adds Open in Shlinkly (Apple bars iOS share extensions from
+/// launching their host app). Talks only to ``ActiveServerResolver`` and
 /// ``ShlinkClient`` — no `AppModel`, no stores — so it runs the same in the
 /// extension's separate process. Platform-specific actions are injected by the
-/// host as closures; the visuals are identical on iOS and macOS.
+/// host as closures.
 struct ShareCreateView: View {
     /// The URL being shared (already extracted from the host by the controller).
     let longURL: String
     /// Closes the extension (the host calls `completeRequest`).
     let onDone: () -> Void
-    /// Opens a `shlinkly://` deep link in the main app, then closes the
-    /// extension. Implemented per platform by the host.
-    let onOpenInApp: (URL) -> Void
+    /// macOS only: opens a `shlinkly://` deep link in the main app (via
+    /// `NSWorkspace`), then closes the extension. On iOS this stays the no-op
+    /// default — Apple doesn't allow a share extension to launch its host app, so
+    /// the iOS host doesn't pass it. A `var` with a default so the synthesized
+    /// memberwise initializer exposes it as optional (a `let` with a default is
+    /// excluded from that initializer).
+    var onOpenInApp: (URL) -> Void = { _ in }
 
     /// Bumped by Retry to re-run the resolve+create task via `.task(id:)`.
     @State private var attempt = 0
@@ -185,23 +191,15 @@ struct ShareCreateView: View {
     @ViewBuilder
     private func successActions(shortURL: String, shortCode: String) -> some View {
         #if os(iOS)
-        // iOS: unchanged — ShareLink presents the system share sheet natively here.
+        // iOS: Share via the native share sheet (ShareLink works here), then Done.
+        // No "Open in Shlinkly" — Apple doesn't allow a share extension to launch
+        // its host app. The short URL is also already on the clipboard.
         VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                if let url = URL(string: shortURL) {
-                    ShareLink(item: url) {
-                        Label("Share", systemImage: "square.and.arrow.up")
-                    }
-                    .buttonStyle(.borderedProminent)
+            if let url = URL(string: shortURL) {
+                ShareLink(item: url) {
+                    Label("Share", systemImage: "square.and.arrow.up")
                 }
-                if let deepLink = deepLink(shortCode: shortCode) {
-                    Button {
-                        onOpenInApp(deepLink)
-                    } label: {
-                        Label("Open in Shlinkly", systemImage: "arrow.up.forward.app")
-                    }
-                    .buttonStyle(.bordered)
-                }
+                .buttonStyle(.borderedProminent)
             }
             Button("Done", action: onDone)
                 .buttonStyle(.bordered)

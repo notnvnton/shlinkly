@@ -52,6 +52,8 @@ struct RootView: View {
 private struct ConfiguredRoot: View {
     let client: ShlinkClient
     @Binding var showSettings: Bool
+    /// Read to consume a ``DeepLink`` parked by the scene's `onOpenURL`.
+    @Environment(AppModel.self) private var appModel
     @State private var listStore: ShortURLListStore
     /// Shared, in-memory tag cache: feeds the macOS sidebar and the iPhone
     /// search suggestions from one load.
@@ -91,6 +93,9 @@ private struct ConfiguredRoot: View {
         .onChange(of: listStore.items.first?.id) { _, _ in
             autoSelectFirstIfNeeded()
         }
+        .onChange(of: appModel.pendingDeepLink, initial: true) { _, deepLink in
+            handleDeepLink(deepLink)
+        }
         #else
         NavigationStack(path: $path) {
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, showSettings: $showSettings)
@@ -98,6 +103,42 @@ private struct ConfiguredRoot: View {
                     destination(route)
                 }
         }
+        .onChange(of: appModel.pendingDeepLink, initial: true) { _, deepLink in
+            handleDeepLink(deepLink)
+        }
+        #endif
+    }
+
+    // MARK: - Deep linking
+
+    /// Resolves and navigates to a pending deep link, then clears it. Fast path:
+    /// the link is already in the loaded list → navigate with no network. Slow
+    /// path: fetch the single link, then navigate. A failed fetch (unknown code
+    /// or offline) is swallowed — the user simply lands on the list, no error UI.
+    private func handleDeepLink(_ deepLink: DeepLink?) {
+        guard let deepLink else { return }
+        appModel.pendingDeepLink = nil
+        switch deepLink {
+        case .linkDetail(let shortCode):
+            if let existing = listStore.items.first(where: { $0.shortCode == shortCode }) {
+                navigate(to: existing)
+            } else {
+                Task {
+                    if let fetched = try? await client.shortURL(shortCode: shortCode) {
+                        navigate(to: fetched)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Lands on a link's detail from any prior navigation state: iOS resets the
+    /// stack to root and pushes the detail; macOS sets the split-view selection.
+    private func navigate(to shortURL: ShortURL) {
+        #if os(macOS)
+        selection = .shortURLDetail(shortURL)
+        #else
+        path = [.shortURLDetail(shortURL)]
         #endif
     }
 

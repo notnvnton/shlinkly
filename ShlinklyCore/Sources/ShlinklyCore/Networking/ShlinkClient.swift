@@ -246,6 +246,21 @@ public actor ShlinkClient {
         let visits: Pagination<Visit>
     }
 
+    /// Fetches a single short URL by its short code via `GET /short-urls/{shortCode}`.
+    ///
+    /// Returns the full ``ShortURL`` directly (the single-resource endpoint isn't
+    /// wrapped, unlike the list). `domain` selects a non-default domain when set;
+    /// an unknown code surfaces as ``ShlinkError/notFound``. Used by deep-link
+    /// resolution to load a link that isn't already in the in-memory list.
+    public func shortURL(shortCode: String, domain: String? = nil) async throws -> ShortURL {
+        var queryItems: [URLQueryItem] = []
+        if let domain {
+            queryItems.append(URLQueryItem(name: "domain", value: domain))
+        }
+        let request = try makeRequest(path: "short-urls/\(shortCode)", queryItems: queryItems)
+        return try await send(request)
+    }
+
     // MARK: - Writes
 
     /// Creates a short URL via `POST /short-urls`.

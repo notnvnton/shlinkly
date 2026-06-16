@@ -27,8 +27,7 @@ class ShareViewController: UIViewController {
         let host = UIHostingController(
             rootView: ShareCreateView(
                 longURL: longURL,
-                onDone: { [weak self] in self?.complete() },
-                onOpenInApp: { [weak self] url in self?.open(url) }
+                onDone: { [weak self] in self?.complete() }
             )
         )
         addChild(host)
@@ -41,12 +40,6 @@ class ShareViewController: UIViewController {
             host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
         host.didMove(toParent: self)
-    }
-
-    /// Launches the main app with the deep link, then closes the extension.
-    private func open(_ url: URL) {
-        extensionContext?.open(url)
-        complete()
     }
 
     private func complete() {
