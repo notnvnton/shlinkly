@@ -58,11 +58,6 @@ struct SettingsView: View {
             #if os(macOS)
             .formStyle(.grouped)
             .frame(minWidth: 460, minHeight: 560)
-            // Apply a presence flip live. The toggle is only reachable from this
-            // sheet, so `onChange` here always fires for an actual change.
-            .onChange(of: macMenuBarOnly) { _, menuBarOnly in
-                AppDelegate.applyPresence(menuBarOnly: menuBarOnly)
-            }
             #endif
             .navigationTitle("Settings")
             #if os(iOS)
