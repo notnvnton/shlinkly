@@ -5,76 +5,97 @@
 
 #if os(macOS)
 import AppKit
-import SwiftUI
 import ShlinklyCore
 
-/// macOS application delegate — it **owns** the main window.
+/// macOS application delegate — owns the AppKit-level window lifecycle that
+/// SwiftUI's scene layer handles unreliably.
 ///
-/// Instead of a SwiftUI `Window` scene (which we couldn't reliably identify, keep
-/// our delegate on, or reopen once its render tree was torn down), the window is a
-/// plain `NSWindow` we create and hold here, hosting the SwiftUI root via
-/// `NSHostingController`. Closing it only *hides* it (`orderOut`); we show it again
-/// directly with AppKit. This is the standard menu-bar-app pattern and makes
-/// show / hide / reopen deterministic.
+/// The core decision: the main `Window` is **never destroyed**. Closing it (the
+/// red button) only *hides* it (`orderOut`); we keep a live `NSWindow` reference
+/// and show it again directly with AppKit's `makeKeyAndOrderFront`. This sidesteps
+/// SwiftUI's `openWindow`, which silently no-ops once a `Window` scene's render
+/// tree has been torn down (notably on recent macOS) — the root cause of "Open
+/// Shlinkly" doing nothing and the window being unrecoverable after the close
+/// button. A window also can't be activated without a Dock icon, so every show
+/// restores `.regular` first.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
-    /// The main window, created in ``applicationDidFinishLaunching`` and never
-    /// destroyed (the close button only hides it). Implicitly unwrapped because it
-    /// exists for the whole post-launch lifetime; `makeMainWindowIfNeeded()` guards
-    /// the rare early path.
-    var mainWindow: NSWindow!
+    /// Wired up by the scene's root `.onAppear`. Optional because AppKit can
+    /// deliver a launch URL before the scene appears (a cold open via deep link);
+    /// such a link is buffered and flushed the moment this is set.
+    var appModel: AppModel? {
+        didSet { flushBufferedDeepLink() }
+    }
+
+    /// A deep link that arrived before ``appModel`` was wired up (cold launch).
+    private var bufferedDeepLink: DeepLink?
+
+    /// The live reference to the single main `Window`. Held so we can show it via
+    /// AppKit directly — the window is only hidden, never closed, so it stays valid.
+    var mainWindow: NSWindow?
 
     // MARK: - Launch
 
-    /// Set the saved activation policy before any window exists, so the Dock icon
-    /// doesn't flicker on for menu-bar-only users.
+    /// Set the saved activation policy early so the Dock icon doesn't flicker on
+    /// for menu-bar-only users (no windows exist yet at this point).
     func applicationWillFinishLaunching(_ notification: Notification) {
         NSApp.setActivationPolicy(Self.menuBarOnly ? .accessory : .regular)
     }
 
-    /// Create the window we own, then present the start state: menu-bar-only starts
-    /// hidden with no Dock icon; the default mode starts visible in the Dock.
+    /// Once SwiftUI has created the window, take it over — become its delegate (to
+    /// intercept the close button) and pin `canHide`/`isReleasedWhenClosed` — and
+    /// apply the start state. Re-assert ownership whenever the window becomes main,
+    /// in case SwiftUI re-sets the delegate. The window may not exist on the first
+    /// pass, so retry on the next runloop tick.
     func applicationDidFinishLaunching(_ notification: Notification) {
-        makeMainWindowIfNeeded()
-        if Self.menuBarOnly {
-            mainWindow.orderOut(nil)
-            NSApp.setActivationPolicy(.accessory)
-        } else {
-            NSApp.setActivationPolicy(.regular)
-            mainWindow.makeKeyAndOrderFront(nil)
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(mainWindowDidBecomeMain(_:)),
+            name: NSWindow.didBecomeMainNotification,
+            object: nil
+        )
+        acquireMainWindowThenStart(attempt: 0)
+    }
+
+    private func acquireMainWindowThenStart(attempt: Int) {
+        if ensureMainWindow() != nil {
+            applyStartState()
+            return
+        }
+        guard attempt < 20 else { return }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated {
+                (NSApp.delegate as? AppDelegate)?.acquireMainWindowThenStart(attempt: attempt + 1)
+            }
         }
     }
 
-    /// The servers live in the iCloud-synced Keychain (no live change notification),
-    /// so re-read on every activation — the macOS equivalent of the scene's former
-    /// `scenePhase == .active` refresh.
-    func applicationDidBecomeActive(_ notification: Notification) {
-        AppModel.shared.refreshFromStore()
+    /// Launch presentation: menu-bar-only starts hidden with no Dock icon; the
+    /// default mode starts visible in the Dock.
+    private func applyStartState() {
+        if Self.menuBarOnly {
+            mainWindow?.orderOut(nil)
+            NSApp.setActivationPolicy(.accessory)
+        } else {
+            NSApp.setActivationPolicy(.regular)
+            mainWindow?.makeKeyAndOrderFront(nil)
+        }
     }
 
-    /// Build the `NSWindow` that hosts the SwiftUI root. Environment does **not**
-    /// cross the `NSHostingController` boundary, so the shared `AppModel` is injected
-    /// explicitly — it's the only custom environment value the view tree reads.
-    private func makeMainWindowIfNeeded() {
-        guard mainWindow == nil else { return }
-
-        let hosting = NSHostingController(rootView: RootView().environment(AppModel.shared))
-        let window = NSWindow(contentViewController: hosting)
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView]
-        window.title = "Shlinkly"
-        window.isReleasedWhenClosed = false
-        window.delegate = self
-        window.canHide = false
-        window.setContentSize(NSSize(width: 1000, height: 640))
-        window.center()
-        window.setFrameAutosaveName("ShlinklyMain")
-        mainWindow = window
+    /// Re-assert our ownership of the window whenever it becomes main — cheap
+    /// insurance against SwiftUI re-installing its own delegate after launch, which
+    /// would otherwise let a close button actually destroy the window.
+    @objc private func mainWindowDidBecomeMain(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              Self.isMainWindowCandidate(window) else { return }
+        if mainWindow == nil { mainWindow = window }
+        configure(window)
     }
 
     // MARK: - Keeping the app alive
 
-    /// Insurance: with hide-on-close the window never actually closes, so this can't
-    /// fire — but keep the app alive regardless.
+    /// Insurance only: with hide-on-close the window never actually closes, so the
+    /// "last window closed" termination can't fire — but keep the app alive anyway.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -91,12 +112,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     // MARK: - Hide on close
 
     /// The red close button *hides* the window instead of closing it: `orderOut`
-    /// keeps the `NSWindow` (and its SwiftUI render tree) alive so we can show it
-    /// again, and `false` cancels the real close. This is *our* delegate on *our*
-    /// window, so it always fires. In menu-bar-only mode, hiding is also when the
-    /// Dock icon finally goes away.
+    /// keeps the `NSWindow` (and SwiftUI's render tree) alive so we can show it
+    /// again, and `false` cancels the real close. In menu-bar-only mode, hiding the
+    /// window is also when the Dock icon finally goes away.
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        mainWindow.orderOut(nil)
+        sender.orderOut(nil)
         if Self.menuBarOnly {
             NSApp.setActivationPolicy(.accessory)
         }
@@ -109,14 +129,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     /// Shlinkly", an incoming deep link, and a Dock-icon reopen all route here.
     ///
     /// Restoring the Dock icon (`.regular`) comes first: AppKit refuses to make a
-    /// window key while `.accessory`. Then we show our held window directly with
-    /// AppKit. Activation is repeated on the next runloop tick to dodge the AppKit
-    /// quirk where an inline activate leaves the window unclickable until refocus.
+    /// window key while `.accessory`. Then we show the held window directly with
+    /// AppKit (`makeKeyAndOrderFront` + `orderFrontRegardless`) — no SwiftUI
+    /// `openWindow`. Activation is repeated on the next runloop tick to dodge the
+    /// AppKit quirk where an inline activate leaves the window unclickable until the
+    /// user changes focus.
     func showMainWindow() {
-        makeMainWindowIfNeeded()
+        let window = ensureMainWindow()
         NSApp.setActivationPolicy(.regular)
-        mainWindow.makeKeyAndOrderFront(nil)
-        mainWindow.orderFrontRegardless()
+        window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
         DispatchQueue.main.async {
             MainActor.assumeIsolated {
                 NSApp.activate(ignoringOtherApps: true)
@@ -127,25 +149,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
 
     // MARK: - Deep links
 
-    /// AppKit delivers `shlinkly://` opens here. Park the parsed link on the shared
-    /// model — the navigation shell observes it and selects the link — then show the
-    /// (possibly hidden) window. Because the window is only hidden, its render tree
-    /// is alive and consumes `pendingDeepLink` on the next observation pass.
+    /// AppKit delivers `shlinkly://` opens here (a lone `Window`, so these reach the
+    /// delegate). Park the parsed link on the shared model — the window's navigation
+    /// shell observes it and selects the link — then show the (possibly hidden)
+    /// window. Because the window is only hidden, its render tree is alive and
+    /// consumes `pendingDeepLink` on the next observation pass.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             guard let deepLink = DeepLink.parse(url) else { continue }
-            AppModel.shared.pendingDeepLink = deepLink
+            if let appModel {
+                appModel.pendingDeepLink = deepLink
+            } else {
+                bufferedDeepLink = deepLink
+            }
         }
         showMainWindow()
+    }
+
+    private func flushBufferedDeepLink() {
+        guard let appModel, let buffered = bufferedDeepLink else { return }
+        appModel.pendingDeepLink = buffered
+        bufferedDeepLink = nil
     }
 
     // MARK: - Presence (Dock-aware activation policy)
 
     /// Applies the "menu bar only" preference as an *effective* activation policy,
     /// called from the Settings toggle. A visible window always implies `.regular`
-    /// (a window can't live without a Dock icon); only once the window is hidden does
-    /// menu-bar-only actually drop the Dock. The window is ours, so `isVisible` is
-    /// authoritative.
+    /// (a window can't live without a Dock icon); only once the window is hidden
+    /// does menu-bar-only actually drop the Dock.
     static func applyPresence(menuBarOnly: Bool) {
         let windowVisible = (NSApp.delegate as? AppDelegate)?.mainWindow?.isVisible ?? false
         if windowVisible {
@@ -155,9 +187,55 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         }
     }
 
+    // MARK: - Main window lookup
+
     /// Whether "menu bar only" is enabled (unset → `false`, i.e. Dock + menu bar).
     static var menuBarOnly: Bool {
         UserDefaults.standard.object(forKey: "macMenuBarOnly") as? Bool ?? false
+    }
+
+    /// Ensure ``mainWindow`` points at the live main window and is configured as our
+    /// delegate. Re-asserts the delegate/flags on every call in case SwiftUI re-set
+    /// them. Returns `nil` only when the window doesn't exist yet (very early launch).
+    @discardableResult
+    private func ensureMainWindow() -> NSWindow? {
+        if let window = mainWindow, NSApp.windows.contains(where: { $0 === window }) {
+            configure(window)
+            return window
+        }
+        guard let found = Self.findMainWindow() else { return nil }
+        mainWindow = found
+        configure(found)
+        return found
+    }
+
+    /// Take ownership of the window: intercept its close button, keep it from being
+    /// hidden by `.accessory`, and keep the object alive across a stray close.
+    private func configure(_ window: NSWindow) {
+        if window.delegate !== self { window.delegate = self }
+        window.canHide = false
+        window.isReleasedWhenClosed = false
+    }
+
+    /// Find the main `Window` among `NSApp.windows`: SwiftUI's scene `identifier`
+    /// `"main"` first, then the `"Shlinkly"` title, then the lone titled, non-sheet,
+    /// non-panel window (the title is otherwise overridden by `navigationTitle`, so
+    /// the structural fallback is what actually carries most launches).
+    private static func findMainWindow() -> NSWindow? {
+        let windows = NSApp.windows
+        if let byID = windows.first(where: { $0.identifier?.rawValue == "main" }) {
+            return byID
+        }
+        if let byTitle = windows.first(where: { $0.title == "Shlinkly" }) {
+            return byTitle
+        }
+        return windows.first(where: isMainWindowCandidate)
+    }
+
+    /// Whether a window looks like the main content window: titled, not a sheet,
+    /// not a panel (the menu-bar item's host window and popovers are panels).
+    private static func isMainWindowCandidate(_ window: NSWindow) -> Bool {
+        window.styleMask.contains(.titled) && !window.isSheet && !(window is NSPanel)
     }
 }
 #endif
