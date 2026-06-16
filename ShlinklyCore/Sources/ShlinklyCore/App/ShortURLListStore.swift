@@ -1,6 +1,5 @@
 import Foundation
 import Observation
-import SwiftUI
 
 /// Drives the short-URL list screen: it owns the items, the paging cursor, the
 /// search term and the sort order, and turns user intent (scroll, search, sort,
@@ -25,12 +24,6 @@ public final class ShortURLListStore {
         /// The load failed; carries a user-facing message.
         case error(String)
     }
-
-    /// The shared spring for every list mutation — add, delete, reorder, page
-    /// append, and in-place refresh — so the rows always settle with one feel.
-    /// Applied here in the store (the single owner of `items`) because the async
-    /// refresh/append paths mutate it from inside, where a view couldn't wrap them.
-    private static let listAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.8)
 
     // MARK: Observable state
 
@@ -199,28 +192,22 @@ public final class ShortURLListStore {
     /// Inserts a freshly created short URL at the top of the list. A create from
     /// an empty list flips the state back to ``ViewState/loaded``.
     public func insertCreated(_ url: ShortURL) {
-        withAnimation(Self.listAnimation) {
-            items.insert(url, at: 0)
-            if state == .empty { state = .loaded }
-        }
+        items.insert(url, at: 0)
+        if state == .empty { state = .loaded }
     }
 
     /// Replaces an edited short URL in place, matched by identity (domain +
     /// short code, both immutable across an edit). No-op if it isn't loaded.
     public func applyUpdated(_ url: ShortURL) {
         guard let index = items.firstIndex(where: { $0.id == url.id }) else { return }
-        withAnimation(Self.listAnimation) {
-            items[index] = url
-        }
+        items[index] = url
     }
 
     /// Removes a short URL from the list, matched by short code and domain.
     /// If it empties the list, the state flips to ``ViewState/empty``.
     public func removeDeleted(shortCode: String, domain: String?) {
-        withAnimation(Self.listAnimation) {
-            items.removeAll { $0.shortCode == shortCode && $0.domain == domain }
-            if items.isEmpty, state == .loaded { state = .empty }
-        }
+        items.removeAll { $0.shortCode == shortCode && $0.domain == domain }
+        if items.isEmpty, state == .loaded { state = .empty }
     }
 
     /// Deletes a short URL on the server and removes it from the list on success
@@ -263,10 +250,8 @@ public final class ShortURLListStore {
             guard !Task.isCancelled else { return }
             currentPage = result.pagination.currentPage
             totalPages = result.pagination.pagesCount
-            withAnimation(Self.listAnimation) {
-                items.append(contentsOf: result.data)
-                state = .loaded
-            }
+            items.append(contentsOf: result.data)
+            state = .loaded
         } catch {
             guard !Task.isCancelled, !(error is CancellationError) else { return }
             // A paging failure shouldn't wipe what's already shown; drop back to
@@ -278,14 +263,12 @@ public final class ShortURLListStore {
     private func apply(firstPage result: Pagination<ShortURL>) {
         currentPage = result.pagination.currentPage
         totalPages = result.pagination.pagesCount
-        // Animate so a re-query with rows already on screen (sort/search/filter)
-        // diffs in by identity — surviving rows glide, gone rows leave, new ones
-        // enter. On a true first load the list was empty, so there's nothing to
-        // animate against and it simply appears.
-        withAnimation(Self.listAnimation) {
-            items = result.data
-            state = result.data.isEmpty ? .empty : .loaded
-        }
+        // The view animates the diff (`.animation(value: items)` on the List), so a
+        // re-query with rows already on screen (sort/search/filter) glides by
+        // identity — surviving rows move, gone rows leave, new ones enter. On a
+        // true first load the list was empty, so there's nothing to animate against.
+        items = result.data
+        state = result.data.isEmpty ? .empty : .loaded
     }
 
     /// Applies a *refresh* result silently — the path for pull-to-refresh, the
@@ -307,17 +290,13 @@ public final class ShortURLListStore {
     private func applyRefreshed(_ result: Pagination<ShortURL>) {
         // Keep the only-assign-if-changed discipline: an identical refresh (the
         // common foreground case) mutates nothing, so there's no diff and no
-        // animation. When the data *did* change, the assignment is wrapped so the
-        // rows spring to their new state in place rather than snapping.
-        if items != result.data {
-            withAnimation(Self.listAnimation) { items = result.data }
-        }
+        // animation. When the data *did* change, the view animates the diff in
+        // place (`.animation(value: items)` on the List) rather than snapping.
+        if items != result.data { items = result.data }
         if currentPage != result.pagination.currentPage { currentPage = result.pagination.currentPage }
         if totalPages != result.pagination.pagesCount { totalPages = result.pagination.pagesCount }
         let newState: ViewState = result.data.isEmpty ? .empty : .loaded
-        if state != newState {
-            withAnimation(Self.listAnimation) { state = newState }
-        }
+        if state != newState { state = newState }
     }
 
     private func fetchPage(_ page: Int) async throws -> Pagination<ShortURL> {
