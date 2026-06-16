@@ -146,14 +146,6 @@
 			);
 			sourceTree = "<group>";
 		};
-		5DC0FFEE0000000000000004 /* ShareUI */ = {
-			isa = PBXGroup;
-			children = (
-				5DC0FFEE0000000000000001 /* ShareCreateView.swift */,
-			);
-			path = ShareUI;
-			sourceTree = "<group>";
-		};
 		5D3060772FDA043400B01249 /* Products */ = {
 			isa = PBXGroup;
 			children = (
@@ -169,6 +161,14 @@
 			children = (
 			);
 			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		5DC0FFEE0000000000000004 /* ShareUI */ = {
+			isa = PBXGroup;
+			children = (
+				5DC0FFEE0000000000000001 /* ShareCreateView.swift */,
+			);
+			path = ShareUI;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */

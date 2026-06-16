@@ -14,6 +14,11 @@ struct ShlinklyApp: App {
     @Environment(\.scenePhase) private var scenePhase
 
     #if os(macOS)
+    /// macOS app delegate. Handles incoming `shlinkly://` URLs at the AppKit level
+    /// so a deep link routes into the existing window instead of `WindowGroup`
+    /// opening a second one. Also the home for future macOS lifecycle bits.
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+
     /// Whether the menu-bar icon is shown. Mirrors the Settings toggle through
     /// the shared `UserDefaults` key, and drives ``MenuBarExtra``'s `isInserted`.
     /// Defaults to on. Hiding it removes only the menu-bar item — the
@@ -44,17 +49,29 @@ struct ShlinklyApp: App {
                         appModel.refreshFromStore()
                     }
                 }
-                // shlinkly://link/{shortCode} → land on that link's detail. Handled
-                // here on the existing scene's root, so on macOS the URL is
-                // delivered to the open window (and brings it forward) rather than
-                // spawning a second one. The navigation shell consumes the parsed
-                // link; junk URLs parse to nil and are ignored.
+                #if os(iOS)
+                // shlinkly://link/{shortCode} → land on that link's detail. iOS has
+                // no duplicate-window issue, so SwiftUI's URL handler is used as-is;
+                // it parks the parsed link and the navigation shell consumes it.
+                // Junk URLs parse to nil and are ignored.
                 .onOpenURL { url in
                     if let deepLink = DeepLink.parse(url) {
                         appModel.pendingDeepLink = deepLink
                     }
                 }
+                #else
+                // macOS routes deep links through the AppDelegate instead (so they
+                // land in the existing window, not a new one); wire it to the shared
+                // model now that the scene is up.
+                .onAppear { appDelegate.appModel = appModel }
+                #endif
         }
+        #if os(macOS)
+        // Stop the WindowGroup from opening a second window for an incoming URL /
+        // external event — the AppDelegate handles `shlinkly://` and routes it into
+        // the window that's already open.
+        .handlesExternalEvents(matching: [])
+        #endif
 
         #if os(macOS)
         // A menu-bar dropdown for quick actions, in the same process as the main
