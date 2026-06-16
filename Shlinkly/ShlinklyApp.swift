@@ -45,8 +45,14 @@ struct ShlinklyApp: App {
         // present — it's Shlinkly's permanent home; the "menu bar only" setting
         // governs only whether the Dock icon also appears. Because the icon never
         // goes away, a "hidden everywhere" state is structurally unreachable.
-        MenuBarExtra("Shlinkly", systemImage: "link") {
+        //
+        // A custom label (vs. the title+image initializer) lets it capture the
+        // `openWindow` action and hand the AppDelegate a way to reopen the main
+        // window after it's closed (or in accessory mode).
+        MenuBarExtra {
             MenuBarContent(appModel: appModel)
+        } label: {
+            MenuBarLabel(appDelegate: appDelegate)
         }
         .menuBarExtraStyle(.menu)
         #else
@@ -88,3 +94,24 @@ struct ShlinklyApp: App {
             #endif
     }
 }
+
+#if os(macOS)
+/// The menu-bar item's label. A `View` (rather than the title+image
+/// `MenuBarExtra` initializer) so it can read `openWindow` from its environment
+/// and stash a reopen closure on the AppDelegate. The menu-bar item is always
+/// mounted, so this fires once and the captured action stays valid for reopening
+/// the main `Window` even after it's closed or while the app is in accessory
+/// (menu-bar-only) mode — where the window's own root view is unmounted.
+private struct MenuBarLabel: View {
+    let appDelegate: AppDelegate
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Image(systemName: "link")
+            .accessibilityLabel("Shlinkly")
+            .onAppear {
+                appDelegate.reopenMainWindow = { openWindow(id: "main") }
+            }
+    }
+}
+#endif
