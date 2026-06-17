@@ -21,6 +21,28 @@ import ShlinklyCore
 /// second client, no singleton model.
 @MainActor
 final class MenuBarController: NSObject {
+    // MARK: - Tunable animation timings
+    //
+    // The icon's lifecycle: idle chevron → spins while "Generate from clipboard"
+    // runs → on success flies right and fades out, then fades/scales back to idle →
+    // on failure just settles back to idle (no fly-away). The status-bar slot can
+    // never be empty, so every path ends at a clean idle.
+
+    /// Seconds for one full spin revolution.
+    private let spinDuration: CFTimeInterval = 0.8
+    /// How far right (points) the icon flies on success.
+    private let flyDistance: CGFloat = 16
+    /// Seconds for the fly-out (slide + fade).
+    private let flyDuration: CFTimeInterval = 0.28
+    /// Seconds for the fade/scale back to idle.
+    private let returnDuration: CFTimeInterval = 0.2
+
+    /// One-time layer setup guard (wantsLayer + centred anchor point).
+    private var didPrepareLayer = false
+    /// The button layer's centred resting position, captured at layer prep. Fly-away
+    /// offsets from it and the return restores it.
+    private var idlePosition: CGPoint = .zero
+
     /// The shared app state, injected (never a singleton). The active server's
     /// `client` is read from here when generating.
     private let appModel: AppModel
@@ -94,6 +116,149 @@ final class MenuBarController: NSObject {
             log.error("MenuBarIcon asset missing")
         }
         button.setAccessibilityLabel("Shlinkly")
+    }
+
+    // MARK: - Icon animation (Core Animation)
+    //
+    // Deliberately Core Animation directly on the status button's backing layer —
+    // not SwiftUI animation, which lags in the menu bar on macOS 26 Tahoe. All of
+    // this runs on the main actor (the controller is @MainActor; the only caller is
+    // generateFromClipboard's main-actor Task).
+
+    /// Lazily turns the status button into a layer host and re-anchors its layer to
+    /// the centre so rotation spins in place. AppKit's default anchor for a
+    /// layer-backed view is a corner; moving it to (0.5, 0.5) would shift the icon,
+    /// so `position` is compensated by the standard offset. Runs once.
+    private func prepareLayerIfNeeded() {
+        guard !didPrepareLayer else { return }
+        guard let button = statusItem.button else {
+            log.error("animation: status item has no button")
+            return
+        }
+        button.wantsLayer = true
+        guard let layer = button.layer else {
+            log.error("animation: button has no layer")
+            return
+        }
+        let center = CGPoint(x: 0.5, y: 0.5)
+        let newOffset = CGPoint(x: layer.bounds.width * center.x, y: layer.bounds.height * center.y)
+        let oldOffset = CGPoint(x: layer.bounds.width * layer.anchorPoint.x, y: layer.bounds.height * layer.anchorPoint.y)
+        layer.position = CGPoint(x: layer.position.x - oldOffset.x + newOffset.x,
+                                 y: layer.position.y - oldOffset.y + newOffset.y)
+        layer.anchorPoint = center
+        idlePosition = layer.position
+        didPrepareLayer = true
+        log.info("animation: layer prepared (idle=\(NSStringFromPoint(self.idlePosition), privacy: .public))")
+    }
+
+    /// Spins the icon continuously while a create is in flight.
+    private func startSpin() {
+        prepareLayerIfNeeded()
+        guard let layer = statusItem.button?.layer else {
+            log.error("startSpin: no layer")
+            return
+        }
+        layer.removeAnimation(forKey: "spin")   // restart from a clean angle
+        let spin = CABasicAnimation(keyPath: "transform.rotation.z")
+        spin.fromValue = 0
+        spin.toValue = 2 * Double.pi
+        spin.duration = spinDuration
+        spin.repeatCount = .infinity
+        spin.timingFunction = CAMediaTimingFunction(name: .linear)
+        spin.isRemovedOnCompletion = false
+        layer.add(spin, forKey: "spin")
+        log.info("startSpin")
+    }
+
+    /// Success: stop spinning, fly the icon right while fading out, then bring it
+    /// back to a clean idle (fade + slight scale-up). The slot is never left empty.
+    private func playSuccessFlyAway() {
+        prepareLayerIfNeeded()
+        guard let layer = statusItem.button?.layer else {
+            log.error("playSuccessFlyAway: no layer")
+            return
+        }
+        // Drop the spin and snap rotation back to identity before flying.
+        layer.removeAnimation(forKey: "spin")
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        CATransaction.commit()
+
+        log.info("fly-start")
+        let move = CABasicAnimation(keyPath: "position.x")
+        move.fromValue = idlePosition.x
+        move.toValue = idlePosition.x + flyDistance
+        move.duration = flyDuration
+        move.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 1
+        fade.toValue = 0
+        fade.duration = flyDuration
+        fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+
+        CATransaction.begin()
+        CATransaction.setCompletionBlock { [weak self] in
+            self?.returnToIdleAfterFly()
+        }
+        CATransaction.setDisableActions(true)   // model jumps to the end state, no implicit anim
+        layer.position = CGPoint(x: idlePosition.x + flyDistance, y: idlePosition.y)
+        layer.opacity = 0
+        layer.add(move, forKey: "flyMove")
+        layer.add(fade, forKey: "flyFade")
+        CATransaction.commit()
+    }
+
+    /// Second half of the success animation: with the icon parked invisible off to
+    /// the right, snap it back to centre (still invisible) and fade/scale it in to a
+    /// clean idle — final model values are opacity 1, identity transform, centred.
+    private func returnToIdleAfterFly() {
+        guard let layer = statusItem.button?.layer else {
+            log.error("returnToIdleAfterFly: no layer")
+            return
+        }
+        log.info("return-start")
+        layer.removeAnimation(forKey: "flyMove")
+        layer.removeAnimation(forKey: "flyFade")
+
+        let fadeIn = CABasicAnimation(keyPath: "opacity")
+        fadeIn.fromValue = 0
+        fadeIn.toValue = 1
+        fadeIn.duration = returnDuration
+        fadeIn.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        let scaleIn = CABasicAnimation(keyPath: "transform.scale")
+        scaleIn.fromValue = 0.6
+        scaleIn.toValue = 1.0
+        scaleIn.duration = returnDuration
+        scaleIn.timingFunction = CAMediaTimingFunction(name: .easeOut)
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)   // model snaps to clean idle; the anims play the entrance
+        layer.position = idlePosition
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        layer.add(scaleIn, forKey: "returnScale")
+        layer.add(fadeIn, forKey: "returnFade")
+        CATransaction.commit()
+    }
+
+    /// Failure: stop spinning and settle straight back to idle — no fly-away.
+    private func stopSpinSettleIdle() {
+        prepareLayerIfNeeded()
+        guard let layer = statusItem.button?.layer else {
+            log.error("stopSpinSettleIdle: no layer")
+            return
+        }
+        layer.removeAnimation(forKey: "spin")
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        layer.transform = CATransform3DIdentity
+        layer.opacity = 1
+        layer.position = idlePosition
+        CATransaction.commit()
+        log.info("stopSpinSettleIdle")
     }
 
     // MARK: - Menu construction
@@ -174,6 +339,7 @@ final class MenuBarController: NSObject {
             return
         }
         isGenerating = true
+        startSpin()
         log.info("generate from clipboard: start")
         // `Task {}` from this @MainActor context runs on the main actor, so updating
         // `status` / `isGenerating` afterwards is safe; only the `client` call hops.
@@ -186,11 +352,13 @@ final class MenuBarController: NSObject {
                 let shortURL = try await LinkActions.createShortURL(fromLongURL: longURL, using: client)
                 Clipboard.copy(shortURL.shortUrl)
                 status = .created(shortURL.shortUrl)
+                playSuccessFlyAway()
                 log.info("generate from clipboard: success — \(shortURL.shortUrl, privacy: .public)")
                 MenuBarNotifier.notify(title: "Short link copied", body: shortURL.shortUrl)
             } catch {
                 let message = ShlinkError.userFacingMessage(for: error)
                 status = .failed(message)
+                stopSpinSettleIdle()
                 log.error("generate from clipboard: failed — \(message, privacy: .public)")
             }
         }
