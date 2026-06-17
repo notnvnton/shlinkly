@@ -9,8 +9,8 @@ import ShlinklyCore
 import os
 
 /// macOS application delegate — the AppKit-level lifecycle SwiftUI's scene layer
-/// doesn't cover: routing `shlinkly://` deep links and keeping the app alive when
-/// its window is closed.
+/// doesn't cover: routing `shlinkly://` deep links, keeping the app alive when its
+/// window is closed, and owning the menu-bar status item.
 ///
 /// Window *showing* is not here: it's ``MacWindowManager``, which owns the live
 /// `NSWindow` captured via ``WindowAccessor`` and re-shows it (hide, don't close).
@@ -21,13 +21,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     /// Wired up by the scene's root `.onAppear`. Optional because AppKit can deliver
     /// a launch URL before the scene appears (a cold open via deep link); such a link
-    /// is buffered and flushed the moment this is set.
+    /// is buffered and flushed the moment this is set. Setting it is also what spins
+    /// up the menu bar, with the *same* model instance the rest of the app uses.
     var appModel: AppModel? {
-        didSet { flushBufferedDeepLink() }
+        didSet {
+            flushBufferedDeepLink()
+            startMenuBarIfNeeded()
+        }
     }
 
     /// A deep link that arrived before ``appModel`` was wired up (cold launch).
     private var bufferedDeepLink: DeepLink?
+
+    /// The menu-bar status item's controller, owned here for the app's lifetime.
+    /// Created once, from the injected ``appModel`` (no singleton model).
+    private var menuBarController: MenuBarController?
 
     // MARK: - Keeping the app alive
 
@@ -69,6 +77,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let appModel, let buffered = bufferedDeepLink else { return }
         appModel.pendingDeepLink = buffered
         bufferedDeepLink = nil
+    }
+
+    // MARK: - Menu bar
+
+    /// Spins up the menu-bar status item once, when ``appModel`` is first wired. The
+    /// controller takes that exact instance, so the menu reads the one active server
+    /// the app is already using.
+    private func startMenuBarIfNeeded() {
+        guard menuBarController == nil, let appModel else { return }
+        menuBarController = MenuBarController(appModel: appModel)
     }
 }
 #endif
