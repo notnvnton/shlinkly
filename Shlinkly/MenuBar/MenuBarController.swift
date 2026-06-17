@@ -96,7 +96,16 @@ final class MenuBarController: NSObject {
         menu.autoenablesItems = false   // honour our explicit isEnabled flags literally
         statusItem.menu = menu
         rebuildMenu()                   // safety: never display an empty menu pre-update
+        observeGenerationSignals()
         log.info("status item created")
+    }
+
+    deinit {
+        // The controller lives for the whole app run, but tidy up regardless.
+        CFNotificationCenterRemoveEveryObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            Unmanaged.passUnretained(self).toOpaque()
+        )
     }
 
     // MARK: - Status item button
@@ -308,6 +317,62 @@ final class MenuBarController: NSObject {
     private func rebuildMenuIfOpen() {
         guard isMenuOpen else { return }
         rebuildMenu()
+    }
+
+    // MARK: - Cross-process signals (Share Sheet)
+    //
+    // The macOS Share Extension runs in its own sandboxed process and can't touch
+    // the menu-bar icon directly. It broadcasts Darwin notifications (which cross
+    // the process + sandbox boundary) on create start/success/failure; we subscribe
+    // here and drive the *same* animation the in-app clipboard path uses.
+
+    /// Subscribes to all three generation signals. Called once from `init`.
+    private func observeGenerationSignals() {
+        observeGenerationSignal(GenerationSignal.started)
+        observeGenerationSignal(GenerationSignal.succeeded)
+        observeGenerationSignal(GenerationSignal.failed)
+    }
+
+    /// Adds a Darwin observer for one signal name. The callback must be a bare C
+    /// function (no captured context), so `self` is passed as the observer pointer
+    /// and recovered inside; safe to hold unretained because the controller lives
+    /// for the whole app run (owned by the AppDelegate).
+    private func observeGenerationSignal(_ name: String) {
+        let observer = Unmanaged.passUnretained(self).toOpaque()
+        CFNotificationCenterAddObserver(
+            CFNotificationCenterGetDarwinNotifyCenter(),
+            observer,
+            { _, observer, cfName, _, _ in
+                guard let observer, let cfName else { return }
+                let controller = Unmanaged<MenuBarController>.fromOpaque(observer).takeUnretainedValue()
+                let signalName = cfName.rawValue as String
+                // The Darwin callback fires on an arbitrary context; hop to the main
+                // actor before touching the layer / status item.
+                Task { @MainActor in controller.handleGenerationSignal(signalName) }
+            },
+            name as CFString,
+            nil,
+            .deliverImmediately
+        )
+    }
+
+    /// Maps a received signal to the existing icon animation (1:1 with the clipboard
+    /// path). Unknown names are ignored.
+    @MainActor
+    private func handleGenerationSignal(_ name: String) {
+        switch name {
+        case GenerationSignal.started:
+            log.info("share signal received: started")
+            startSpin()
+        case GenerationSignal.succeeded:
+            log.info("share signal received: succeeded")
+            playSuccessFlyAway()
+        case GenerationSignal.failed:
+            log.info("share signal received: failed")
+            stopSpinSettleIdle()
+        default:
+            break
+        }
     }
 
     // MARK: - Actions
