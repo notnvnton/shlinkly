@@ -43,17 +43,11 @@ struct ShlinklyApp: App {
                 })
         }
 
-        // A menu-bar dropdown for quick actions, in the same process as the main
-        // window so it shares the one active server. The menu-bar item is always
-        // present — it's Shlinkly's permanent home; the "menu bar only" setting
-        // governs only whether the Dock icon also appears. Because the icon never
-        // goes away, a "hidden everywhere" state is structurally unreachable.
-        MenuBarExtra {
-            MenuBarContent(appModel: appModel)
-        } label: {
-            MenuBarLabel()
-        }
-        .menuBarExtraStyle(.menu)
+        // The menu-bar item is no longer a SwiftUI `MenuBarExtra` scene: it's a
+        // hand-managed `NSStatusItem` driven by `MenuBarController` (owned by the
+        // `AppDelegate`, wired with this same `appModel`). That's a prerequisite for
+        // animating the icon later — `MenuBarExtra` can't. The menu-bar item is still
+        // always present, Shlinkly's permanent home.
         #else
         // Explicit id keeps parity with the macOS window; harmless on iOS.
         WindowGroup(id: "main") {
@@ -87,25 +81,9 @@ struct ShlinklyApp: App {
             }
             #else
             // macOS routes deep links through the AppDelegate (so they land in the
-            // existing window). Wire the delegate to the shared model once the
-            // scene is up.
+            // existing window). Wire the delegate to the shared model once the scene
+            // is up; that same assignment also spins up the menu-bar status item.
             .onAppear { appDelegate.appModel = appModel }
             #endif
     }
 }
-
-#if os(macOS)
-/// The menu-bar item's label: the brand chevrons, rendered as a template image.
-/// Showing the window is `MacWindowManager`'s job (it re-shows the live window),
-/// so this label is purely the icon — no `openWindow`.
-private struct MenuBarLabel: View {
-    var body: some View {
-        Image("MenuBarIcon")
-            .renderingMode(.template)
-            .resizable()
-            .scaledToFit()
-            .frame(width: 18, height: 18)
-            .accessibilityLabel("Shlinkly")
-    }
-}
-#endif
