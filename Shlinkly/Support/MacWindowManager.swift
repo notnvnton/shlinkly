@@ -76,11 +76,24 @@ final class MacWindowManager {
     /// icon first so the app is a normal foreground app while its window is visible.
     func showMainWindow() {
         log.info("showMainWindow called; haveWindow=\(self.mainWindow != nil)")
+        // 1) restore the Dock icon.
         NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-        guard let window = mainWindow else { return }
-        window.makeKeyAndOrderFront(nil)
-        log.info("ordered front; isVisible=\(window.isVisible)")
+        // 2) Let the policy transition settle, then force the window forward. On
+        //    Sonoma+/Tahoe a background app isn't allowed to pull a window front
+        //    immediately after a policy change (cooperative activation), which is why
+        //    makeKeyAndOrderFront alone left the window hidden until a Dock click.
+        //    `orderFrontRegardless()` bypasses that restriction; `activate` doesn't.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            guard let window = self.mainWindow else {
+                self.log.error("showMainWindow: window reference lost after delay")
+                return
+            }
+            NSApp.activate()
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()   // key call: bypasses cooperative activation
+            self.log.info("ordered front (regardless); isVisible=\(window.isVisible), isKey=\(window.isKeyWindow)")
+        }
     }
 }
 #endif
