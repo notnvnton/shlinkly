@@ -14,6 +14,9 @@ import UIKit
 #if canImport(AppKit)
 import AppKit
 #endif
+#if os(macOS)
+import os
+#endif
 
 /// The one screen both Share Extensions show. Zero-tap by design: on appear it
 /// resolves the active server, creates the short link, copies it, and shows the
@@ -97,12 +100,21 @@ struct ShareCreateView: View {
         state = .creating(serverName: resolved.instance.displayName)
 
         do {
+            #if os(macOS)
+            ShareSignal.started()
+            #endif
             let created = try await resolved.client.createShortURL(fromLongURL: longURL)
             ShareClipboard.copy(created.shortUrl)
+            #if os(macOS)
+            ShareSignal.succeeded()
+            #endif
             withAnimation(.spring(response: 0.45, dampingFraction: 0.8)) {
                 state = .success(shortURL: created.shortUrl, shortCode: created.shortCode)
             }
         } catch {
+            #if os(macOS)
+            ShareSignal.failed()
+            #endif
             state = .error(title: "Couldn't create the short link.",
                            subtitle: ShlinkError.userFacingMessage(for: error),
                            canRetry: true)
@@ -279,6 +291,29 @@ enum ShareState {
     case success(shortURL: String, shortCode: String)
     case error(title: String, subtitle: String, canRetry: Bool)
 }
+
+#if os(macOS)
+/// macOS Share Extension only: posts the cross-process generation Darwin signal and
+/// logs it, so on-device you can see whether the extension fired each step. The
+/// app's `MenuBarController` receives these and drives the menu-bar icon. iOS has no
+/// menu bar, so this is compiled out there.
+private enum ShareSignal {
+    private static let log = Logger(subsystem: "de.ahodge.shlinkly", category: "ShareSignal")
+
+    static func started() {
+        log.info("post: started")
+        postGenerationSignal(GenerationSignal.started)
+    }
+    static func succeeded() {
+        log.info("post: succeeded")
+        postGenerationSignal(GenerationSignal.succeeded)
+    }
+    static func failed() {
+        log.info("post: failed")
+        postGenerationSignal(GenerationSignal.failed)
+    }
+}
+#endif
 
 /// Copies a string to the system pasteboard, per platform.
 enum ShareClipboard {
