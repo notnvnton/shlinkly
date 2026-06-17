@@ -6,18 +6,19 @@
 #if os(macOS)
 import AppKit
 import ShlinklyCore
+import os
 
 /// macOS application delegate — the AppKit-level lifecycle SwiftUI's scene layer
-/// doesn't cover: routing `shlinkly://` deep links, keeping the app alive when its
-/// window is closed, and showing the window again.
+/// doesn't cover: routing `shlinkly://` deep links and keeping the app alive when
+/// its window is closed.
 ///
-/// The window itself is an ordinary SwiftUI `Window` scene — we do **not** own an
-/// `NSWindow`. Showing it is done the way working menu-bar apps (e.g. Passepartout)
-/// do it: ask the system to reopen our app instance (`NSWorkspace.openApplication`),
-/// which brings the app to `.regular`, recreates the window, and restores the Dock
-/// icon — no manual `makeKeyAndOrderFront` / `setActivationPolicy`.
+/// Window *showing* is not here: it's ``MacWindowManager``, which owns the live
+/// `NSWindow` captured via ``WindowAccessor`` and re-shows it (hide, don't close).
+/// The delegate only forwards "please show" to that single path.
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    private let log = Logger(subsystem: "de.ahodge.shlinkly", category: "WindowLifecycle")
+
     /// Wired up by the scene's root `.onAppear`. Optional because AppKit can deliver
     /// a launch URL before the scene appears (a cold open via deep link); such a link
     /// is buffered and flushed the moment this is set.
@@ -31,37 +32,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - Keeping the app alive
 
     /// Closing the main window never quits the app — the menu-bar item (and its
-    /// "Generate from clipboard") is the whole point of staying resident. In
-    /// menu-bar-only mode, the window closing is also when the Dock icon goes away;
-    /// otherwise the Dock icon stays and a Dock click reopens the window.
+    /// "Generate from clipboard") is the whole point of staying resident. Quitting is
+    /// only ever via the menu-bar "Quit". The Dock-presence decision on close lives
+    /// in ``MacWindowManager`` (driven by the window's `willClose`), not here.
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        if Self.menuBarOnly {
-            NSApp.setActivationPolicy(.accessory)
-        }
+        log.info("terminate? returning false")
         return false
     }
 
-    // MARK: - Showing the window
-
-    /// The single way to show the window: ask the system to reopen our (already
-    /// running) app instance. macOS restores `.regular`, recreates the `Window`
-    /// scene's window, and brings everything forward. This is the Passepartout
-    /// pattern — a closed SwiftUI `Window` can't be reopened with `openWindow`, but
-    /// the system's own reopen does it reliably, with no AppKit window poking.
-    func showMainWindow() {
-        Task { @MainActor in
-            let config = NSWorkspace.OpenConfiguration()
-            config.createsNewApplicationInstance = false
-            try? await NSWorkspace.shared.openApplication(at: Bundle.main.bundleURL, configuration: config)
-        }
+    /// Reactivating the app (a Dock click when present, ⌘-tab, or the menu-bar
+    /// "Open") restores the regular activation policy so the Dock icon comes back.
+    func applicationWillBecomeActive(_ notification: Notification) {
+        log.info("willBecomeActive → .regular")
+        NSApp.setActivationPolicy(.regular)
     }
 
     // MARK: - Deep links
 
     /// AppKit delivers `shlinkly://` opens here. Park the parsed link on the shared
-    /// model (or buffer it until the model is wired), then ask the system to show the
-    /// window so the navigation shell mounts and consumes it. `appModel` is app-level,
-    /// so it survives the window being destroyed and recreated.
+    /// model (or buffer it until the model is wired), then show the window via the
+    /// single path so the navigation shell is visible to consume it. `appModel` is
+    /// app-level, so it survives the window being hidden and re-shown.
     func application(_ application: NSApplication, open urls: [URL]) {
         for url in urls {
             guard let deepLink = DeepLink.parse(url) else { continue }
@@ -71,21 +62,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                 bufferedDeepLink = deepLink
             }
         }
-        showMainWindow()
+        MacWindowManager.shared.showMainWindow()
     }
 
     private func flushBufferedDeepLink() {
         guard let appModel, let buffered = bufferedDeepLink else { return }
         appModel.pendingDeepLink = buffered
         bufferedDeepLink = nil
-    }
-
-    // MARK: - Preference
-
-    /// Whether "menu bar only" is enabled (unset → `false`, i.e. Dock + menu bar).
-    /// Read only on window close, to decide whether the Dock icon should go away.
-    private static var menuBarOnly: Bool {
-        UserDefaults.standard.object(forKey: "macMenuBarOnly") as? Bool ?? false
     }
 }
 #endif

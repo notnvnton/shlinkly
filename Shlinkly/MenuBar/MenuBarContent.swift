@@ -92,12 +92,12 @@ struct MenuBarContent: View {
         }
     }
 
-    /// Brings the app and its main window to the front, recreating the window if the
-    /// user had closed it (the menu-bar item keeps the app running with no windows).
-    /// Routes through the AppDelegate's single show path, which asks the system to
-    /// reopen the app — restoring `.regular`, the Dock icon, and the window.
+    /// Brings the app and its main window to the front, re-showing the window if the
+    /// user had closed (hidden) it — the menu-bar item keeps the app running with no
+    /// visible window. Routes through ``MacWindowManager``'s single show path, which
+    /// restores `.regular`, the Dock icon, and orders the live window forward.
     private func openMainWindow() {
-        (NSApp.delegate as? AppDelegate)?.showMainWindow()
+        MacWindowManager.shared.showMainWindow()
     }
 }
 

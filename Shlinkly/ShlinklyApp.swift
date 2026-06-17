@@ -33,10 +33,14 @@ struct ShlinklyApp: App {
         // A single `Window` (not `WindowGroup`): macOS should never have two main
         // windows, and crucially a lone window lets AppKit deliver `shlinkly://`
         // opens to `AppDelegate.application(_:open:)`. Closing it keeps the app alive
-        // (the menu-bar item stays); the AppDelegate shows it again by asking the
-        // system to reopen the app (`NSWorkspace.openApplication`).
+        // (the menu-bar item stays) and only *hides* the window — `WindowAccessor`
+        // hands its live `NSWindow` to `MacWindowManager`, which pins it alive and
+        // re-shows that same window on "Open" (hide, don't close).
         Window("Shlinkly", id: "main") {
             rootContent
+                .background(WindowAccessor { window in
+                    MacWindowManager.shared.captureMainWindow(window)
+                })
         }
 
         // A menu-bar dropdown for quick actions, in the same process as the main
@@ -92,8 +96,8 @@ struct ShlinklyApp: App {
 
 #if os(macOS)
 /// The menu-bar item's label: the brand chevrons, rendered as a template image.
-/// Showing the window is the AppDelegate's job (it asks the system to reopen the
-/// app), so this label is purely the icon — no `openWindow`.
+/// Showing the window is `MacWindowManager`'s job (it re-shows the live window),
+/// so this label is purely the icon — no `openWindow`.
 private struct MenuBarLabel: View {
     var body: some View {
         Image("MenuBarIcon")
