@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5D921D612FE187F200C98C47 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D921D602FE187F200C98C47 /* ShlinklyCore */; };
 		5D921DFC2FE18CA800C98C47 /* ShareExtensionMac.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5D921E032FE18D6600C98C47 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D921E022FE18D6600C98C47 /* ShlinklyCore */; };
@@ -344,9 +344,7 @@
 /* Begin PBXTargetDependency section */
 		5D921D572FE183E200C98C47 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			platformFilters = (
-				ios,
-			);
+			platformFilter = ios;
 			target = 5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */;
 			targetProxy = 5D921D562FE183E200C98C47 /* PBXContainerItemProxy */;
 		};
@@ -482,7 +480,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Shlinkly/Shlinkly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -531,7 +529,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Shlinkly/Shlinkly.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -578,7 +576,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShareExtensionIOS/ShareExtensionIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtensionIOS/Info.plist;
@@ -613,7 +611,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = ShareExtensionIOS/ShareExtensionIOS.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = ShareExtensionIOS/Info.plist;
@@ -650,7 +648,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtensionMac/ShareExtensionMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -694,7 +692,7 @@
 				CODE_SIGN_ENTITLEMENTS = ShareExtensionMac/ShareExtensionMac.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
