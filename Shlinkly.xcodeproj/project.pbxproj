@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */; platformFilters = (ios, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5D921D612FE187F200C98C47 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D921D602FE187F200C98C47 /* ShlinklyCore */; };
 		5D921DFC2FE18CA800C98C47 /* ShareExtensionMac.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		5D921E032FE18D6600C98C47 /* ShlinklyCore in Frameworks */ = {isa = PBXBuildFile; productRef = 5D921E022FE18D6600C98C47 /* ShlinklyCore */; };
@@ -344,7 +344,9 @@
 /* Begin PBXTargetDependency section */
 		5D921D572FE183E200C98C47 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
-			platformFilter = ios;
+			platformFilters = (
+				ios,
+			);
 			target = 5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */;
 			targetProxy = 5D921D562FE183E200C98C47 /* PBXContainerItemProxy */;
 		};
@@ -483,6 +485,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -511,6 +514,7 @@
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -530,6 +534,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U28AHSTDJ3;
 				ENABLE_APP_SANDBOX = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readonly;
@@ -558,6 +563,7 @@
 				SDKROOT = auto;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MACCATALYST = NO;
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
 				SWIFT_EMIT_LOC_STRINGS = YES;
