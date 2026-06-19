@@ -40,6 +40,13 @@ struct ShortURLListScreen: View {
     /// Cancels a pending toast-hide so back-to-back copies restart the timer
     /// instead of the first one's timer hiding the second toast early.
     @State private var copiedResetTask: Task<Void, Never>?
+    /// Whether the clipboard currently looks like it holds a URL, refreshed on
+    /// `.task` and on scenePhase → `.active`. Drives whether the "+" toolbar item
+    /// is a `Menu` (offering Paste) or a plain button — cached because a `Menu`'s
+    /// items are built when the toolbar renders, not at tap time. Probed via
+    /// `Clipboard.containsProbableURL()`, which never reveals the contents (no iOS
+    /// "pasted from" banner). Shared by iOS and macOS.
+    @State private var clipboardHasURL = false
 
     #if os(iOS)
     /// Bumped on each copy to fire a light haptic via `.sensoryFeedback`.
@@ -47,8 +54,6 @@ struct ShortURLListScreen: View {
     /// The link awaiting the system share sheet, presented from the swipe action
     /// (where `ShareLink` is ignored). `nil` when no share sheet is shown.
     @State private var shareItem: ShareItem?
-    /// Shown when the + is tapped and the clipboard looks like it holds a URL.
-    @State private var showPasteChoice = false
     /// Multi-select state (iPhone). `isSelecting` swaps the toolbar into a
     /// batch-delete mode; `selectedIDs` tracks the chosen rows.
     @State private var isSelecting = false
@@ -57,12 +62,6 @@ struct ShortURLListScreen: View {
     #endif
 
     #if os(macOS)
-    /// Whether the clipboard currently looks like it holds a URL, refreshed on
-    /// appear and on activation. Drives whether the "+" is a pull-down menu
-    /// (offering Paste) or a plain button — cached because a menu's items are
-    /// built when the toolbar renders, not at click time, and reading the
-    /// pasteboard on macOS is synchronous and ungated, so refreshing is cheap.
-    @State private var clipboardHasURL = false
     /// True while a toolbar-initiated refresh is in flight, so the button shows a
     /// small inline spinner instead of a full-screen overlay — the list stays put.
     @State private var isRefreshing = false
@@ -119,22 +118,6 @@ struct ShortURLListScreen: View {
         .toolbar { toolbarContent }
         .searchable(text: searchBinding, prompt: Text("Search links"))
         .tagSearchSuggestions(tagSuggestions) { store.applyTagFromSearch($0) }
-        #if os(iOS)
-        // iPhone: an action sheet rather than a popover, which mis-anchored its
-        // arrow to a list row instead of the "+". macOS uses the "+" pull-down.
-        .confirmationDialog(
-            "You have a link on your clipboard",
-            isPresented: $showPasteChoice,
-            titleVisibility: .visible
-        ) {
-            Button("Paste from clipboard") {
-                formRoute = .create(prefillURL: Clipboard.peekURLString())
-            }
-            Button("New link") {
-                formRoute = .create(prefillURL: nil)
-            }
-        }
-        #endif
         .sheet(item: $formRoute) { route in
             switch route {
             case .create(let prefill):
@@ -166,16 +149,12 @@ struct ShortURLListScreen: View {
             if didInitialLoad {
                 Task { await store.refresh() }
             }
-            #if os(macOS)
             // Also re-check the clipboard so the "+" menu reflects a URL copied
-            // while the app was in the background.
+            // while the app was backgrounded/inactive.
             Task { clipboardHasURL = await Clipboard.containsProbableURL() }
-            #endif
         }
         .task {
-            #if os(macOS)
             clipboardHasURL = await Clipboard.containsProbableURL()
-            #endif
             tagsStore.loadIfNeeded()
             guard !didInitialLoad else { return }
             didInitialLoad = true
@@ -217,23 +196,11 @@ struct ShortURLListScreen: View {
         }
     }
 
-    /// Opens the create form, offering to start from a clipboard URL when one is
-    /// present (detected without reading; the value is only read if the user taps
-    /// "Paste from clipboard").
+    /// Opens a blank create form. Used by the empty-state "Create First Link"
+    /// button; the clipboard Paste choice lives on the "+" toolbar item's `Menu`
+    /// (see `addMenu`), not here.
     private func startCreate() {
-        #if os(iOS)
-        Task {
-            if await Clipboard.containsProbableURL() {
-                showPasteChoice = true
-            } else {
-                formRoute = .create(prefillURL: nil)
-            }
-        }
-        #else
-        // macOS opens New Link directly from the empty-state button; the "+"
-        // toolbar's pull-down menu is where the Paste-from-clipboard choice lives.
         formRoute = .create(prefillURL: nil)
-        #endif
     }
 
     // MARK: - Row actions
@@ -653,28 +620,28 @@ struct ShortURLListScreen: View {
         }
     }
 
-    /// The "+" that opens the create form, sitting alongside the sort control. On
-    /// iOS a plain button (the clipboard choice is an action sheet); on macOS a
-    /// pull-down menu offering Paste when the clipboard holds a URL.
+    /// The "+" that opens the create form, sitting alongside the sort control.
+    ///
+    /// REGRESSION GUARD — invariant: the clipboard choice MUST be owned by this
+    /// "+" toolbar item (a `Menu`/popover anchored to the button — see `addMenu`).
+    /// It MUST NOT be a screen-root `.confirmationDialog`/`.popover`: those take no
+    /// source anchor, so on iPad SwiftUI synthesizes the popover arrow from the
+    /// screen bounds and it lands on a list row instead of the "+" (regressed 3×).
+    /// A `Menu`'s popover is anchored by the system to its own label, so it
+    /// structurally cannot hit a row. One shared path for iOS and macOS.
     @ToolbarContentBuilder
     private var addToolbar: some ToolbarContent {
         ToolbarItem(placement: .primaryAction) {
-            #if os(iOS)
-            Button {
-                startCreate()
-            } label: {
-                Label("New Link", systemImage: "plus")
-            }
-            #else
             addMenu
-            #endif
         }
     }
 
-    #if os(macOS)
-    /// macOS "+": a pull-down menu with Paste/New when the clipboard looks like a
-    /// URL, or a plain button that opens New Link when it doesn't — so an empty
-    /// clipboard takes a single click and never shows an empty menu.
+    /// The "+" content, shared by iOS and macOS: a pull-down `Menu` with Paste/New
+    /// when the clipboard looks like a URL, or a plain button that opens New Link
+    /// when it doesn't — so an empty clipboard takes a single tap and never shows
+    /// an empty menu. Because the choice is a `Menu`, its popover is anchored by
+    /// the system to this button on every platform (including iPad) — never to a
+    /// list row. See the invariant on `addToolbar`.
     @ViewBuilder
     private var addMenu: some View {
         if clipboardHasURL {
@@ -696,7 +663,6 @@ struct ShortURLListScreen: View {
             }
         }
     }
-    #endif
 
     /// Search routes through the store so the debounce and server query run.
     private var searchBinding: Binding<String> {
