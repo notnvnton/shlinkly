@@ -50,17 +50,25 @@ struct VisitsBarChart: View {
             }
         }
         .chartXAxis {
-            // Explicit, thinned day ticks (≈4 for a week, ≈5 for a month, today
-            // always included) so Swift Charts can't fall back to an hour axis.
-            // These are axis *tick values* on the continuous scale — not a scale
-            // domain — so they don't create a band scale. Full "Jun 15" form, so
-            // nothing truncates to "J…".
-            AxisMarks(values: labelDays) {
+            // Explicit, thinned day ticks (≈4 for a week, ≈5 for a month) so Swift
+            // Charts can't fall back to an hour axis. These are tick values on the
+            // continuous scale, not a scale domain, so they don't create a band scale.
+            //
+            // The label MUST use the closure form + `.fixedSize()`: with `unit: .day`
+            // bars, Charts otherwise clamps each label to one day-cell's width
+            // (~11pt on a 30-day domain) and truncates "Jun 15" to "Ju…". `.fixedSize()`
+            // lets the text keep its natural width. Do not revert to `AxisValueLabel(format:)`.
+            AxisMarks(values: labelDays) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
                     .foregroundStyle(Color.primary.opacity(0.08))
                 AxisTick()
                     .foregroundStyle(Color.primary.opacity(0.15))
-                AxisValueLabel(format: .dateTime.month(.abbreviated).day())
+                AxisValueLabel {
+                    if let day = value.as(Date.self) {
+                        Text(day, format: .dateTime.month(.abbreviated).day())
+                            .fixedSize()
+                    }
+                }
             }
         }
         // Purely a display chart — no selection or tap. Opt out of hit testing
