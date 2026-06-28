@@ -20,6 +20,12 @@ struct ShlinklyApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     #endif
 
+    #if os(macOS) && SPARKLE
+    /// Sparkle updater, present only in the direct-distribution (`Release-Direct`)
+    /// build. Drives the "Check for Updates…" command below. Absent everywhere else.
+    @StateObject private var updater = AppUpdater()
+    #endif
+
     init() {
         let model = AppModel()
         // Credentials come from Keychain-backed instances: bootstrap brings the
@@ -42,6 +48,19 @@ struct ShlinklyApp: App {
                     MacWindowManager.shared.captureMainWindow(window)
                 })
         }
+        #if SPARKLE
+        // Direct-distribution only: a standard "Check for Updates…" item in the app
+        // menu, wired to Sparkle and disabled while a check can't run. Compiled out of
+        // the Mac App Store build (App Store handles updates) and absent on iOS.
+        .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updater.checkForUpdates()
+                }
+                .disabled(!updater.canCheckForUpdates)
+            }
+        }
+        #endif
 
         // The menu-bar item is no longer a SwiftUI `MenuBarExtra` scene: it's a
         // hand-managed `NSStatusItem` driven by `MenuBarController` (owned by the
