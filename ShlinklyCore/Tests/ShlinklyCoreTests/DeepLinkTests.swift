@@ -33,6 +33,24 @@ struct DeepLinkTests {
         #expect(DeepLink.parse(try #require(URL(string: "shlinkly://link/"))) == nil)
     }
 
+    @Test("Parses shlinkly://create into a blank .createLink")
+    func parsesCreate() throws {
+        let url = try #require(URL(string: "shlinkly://create"))
+        #expect(DeepLink.parse(url) == .createLink(fromClipboard: false))
+    }
+
+    @Test("source=clipboard asks for the clipboard prefill")
+    func parsesCreateFromClipboard() throws {
+        let url = try #require(URL(string: "shlinkly://create?source=clipboard"))
+        #expect(DeepLink.parse(url) == .createLink(fromClipboard: true))
+    }
+
+    @Test("An unrecognised source degrades to the blank create form")
+    func unknownCreateSource() throws {
+        #expect(DeepLink.parse(try #require(URL(string: "shlinkly://create?source=camera"))) == .createLink(fromClipboard: false))
+        #expect(DeepLink.parse(try #require(URL(string: "shlinkly://create?other=clipboard"))) == .createLink(fromClipboard: false))
+    }
+
     @Test("Junk input is rejected")
     func junk() throws {
         #expect(DeepLink.parse(try #require(URL(string: "garbage"))) == nil)

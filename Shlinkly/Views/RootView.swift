@@ -129,7 +129,23 @@ private struct ConfiguredRoot: View {
                     }
                 }
             }
+        case .createLink(let fromClipboard):
+            // The list screen owns the create sheet, so hand it the request
+            // rather than navigating. Any open detail is dismissed first so the
+            // form opens over the list, matching the "+" button's context.
+            navigateToRoot()
+            appModel.pendingCreate = .init(fromClipboard: fromClipboard)
         }
+    }
+
+    /// Returns to the list from any prior navigation state, so a create request
+    /// arriving while a detail is open lands in the same place the "+" would.
+    private func navigateToRoot() {
+        #if os(macOS)
+        selection = nil
+        #else
+        path.removeAll()
+        #endif
     }
 
     /// Lands on a link's detail from any prior navigation state: iOS resets the
