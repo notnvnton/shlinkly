@@ -160,6 +160,14 @@ struct ShortURLListScreen: View {
             didInitialLoad = true
             store.loadFirstPage()
         }
+        // A create request parked by a deep link (the widget's buttons) opens the
+        // very same form the "+" menu does — including the clipboard prefill, read
+        // here in the app at open time, never in the widget process.
+        .onChange(of: appModel.pendingCreate, initial: true) { _, request in
+            guard let request else { return }
+            appModel.pendingCreate = nil
+            formRoute = .create(prefillURL: request.fromClipboard ? Clipboard.peekURLString() : nil)
+        }
         .copiedToast(isPresented: showCopiedToast)
         #if os(iOS)
         .sensoryFeedback(.impact(weight: .light), trigger: copyFeedbackTrigger)

@@ -27,6 +27,26 @@ public final class AppModel {
     /// handler and the navigation shell share — so neither needs to know the other.
     public var pendingDeepLink: DeepLink?
 
+    /// A create-form request awaiting presentation, parked the same way as
+    /// ``pendingDeepLink`` but consumed by the list screen (which owns the form
+    /// sheet) rather than the navigation shell. `true` asks for the clipboard
+    /// prefill; the pasteboard read itself happens there, on the main app, when
+    /// the form is opened.
+    public var pendingCreate: PendingCreate?
+
+    /// A parked request to open the create form. A struct rather than a `Bool?`
+    /// so repeated identical requests (two taps on the same widget button) are
+    /// distinct values and each one re-triggers the sheet.
+    public struct PendingCreate: Equatable, Sendable, Identifiable {
+        public let id = UUID()
+        /// Whether to prefill the form from the pasteboard.
+        public let fromClipboard: Bool
+
+        public init(fromClipboard: Bool) {
+            self.fromClipboard = fromClipboard
+        }
+    }
+
     /// The persisted servers + active selection. Exposed so Settings can list and
     /// edit them; mutate it through this model's methods so ``client`` stays in
     /// sync.

@@ -15,6 +15,7 @@
 		5DC0FFEE0000000000000002 /* ShareCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC0FFEE0000000000000001 /* ShareCreateView.swift */; };
 		5DC0FFEE0000000000000003 /* ShareCreateView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC0FFEE0000000000000001 /* ShareCreateView.swift */; };
 		5DA9B1E0000000000000B102 /* Sparkle.framework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 5DA9B1E0000000000000B101 /* Sparkle.framework */; platformFilters = (macos, ); settings = {ATTRIBUTES = (CodeSignOnCopy, ); }; };
+		5DFEED00000000000000000C /* ShlinklyWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5DFEED000000000000000002 /* ShlinklyWidget.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -32,6 +33,13 @@
 			remoteGlobalIDString = 5D921DEF2FE18CA800C98C47;
 			remoteInfo = ShareExtensionMac;
 		};
+		5DFEED00000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 5D30606E2FDA043400B01249 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 5DFEED000000000000000001;
+			remoteInfo = ShlinklyWidget;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -43,6 +51,7 @@
 			files = (
 				5D921DFC2FE18CA800C98C47 /* ShareExtensionMac.appex in Embed Foundation Extensions */,
 				5D921D582FE183E200C98C47 /* ShareExtensionIOS.appex in Embed Foundation Extensions */,
+				5DFEED00000000000000000C /* ShlinklyWidget.appex in Embed Foundation Extensions */,
 			);
 			name = "Embed Foundation Extensions";
 			runOnlyForDeploymentPostprocessing = 0;
@@ -66,6 +75,7 @@
 		5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtensionMac.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DC0FFEE0000000000000001 /* ShareCreateView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareCreateView.swift; sourceTree = "<group>"; };
 		5DA9B1E0000000000000B101 /* Sparkle.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Sparkle.framework; path = Vendor/Sparkle/Sparkle.framework; sourceTree = SOURCE_ROOT; };
+		5DFEED000000000000000002 /* ShlinklyWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShlinklyWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -89,6 +99,13 @@
 				Info.plist,
 			);
 			target = 5D3060752FDA043400B01249 /* Shlinkly */;
+		};
+		5DFEED000000000000000007 /* Exceptions for "ShlinklyWidget" folder in "ShlinklyWidget" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 5DFEED000000000000000001 /* ShlinklyWidget */;
 		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
@@ -115,6 +132,14 @@
 				5D921DFF2FE18CA800C98C47 /* Exceptions for "ShareExtensionMac" folder in "ShareExtensionMac" target */,
 			);
 			path = ShareExtensionMac;
+			sourceTree = "<group>";
+		};
+		5DFEED000000000000000006 /* ShlinklyWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5DFEED000000000000000007 /* Exceptions for "ShlinklyWidget" folder in "ShlinklyWidget" target */,
+			);
+			path = ShlinklyWidget;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -144,6 +169,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5DFEED000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -153,6 +185,7 @@
 				5D3060782FDA043400B01249 /* Shlinkly */,
 				5D921D4F2FE183E200C98C47 /* ShareExtensionIOS */,
 				5D921DF12FE18CA800C98C47 /* ShareExtensionMac */,
+				5DFEED000000000000000006 /* ShlinklyWidget */,
 				5DC0FFEE0000000000000004 /* ShareUI */,
 				5D921D5F2FE187F200C98C47 /* Frameworks */,
 				5D3060772FDA043400B01249 /* Products */,
@@ -165,6 +198,7 @@
 				5D3060762FDA043400B01249 /* Shlinkly.app */,
 				5D921D4E2FE183E200C98C47 /* ShareExtensionIOS.appex */,
 				5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */,
+				5DFEED000000000000000002 /* ShlinklyWidget.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -203,6 +237,7 @@
 			dependencies = (
 				5D921D572FE183E200C98C47 /* PBXTargetDependency */,
 				5D921DFB2FE18CA800C98C47 /* PBXTargetDependency */,
+				5DFEED00000000000000000E /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				5D3060782FDA043400B01249 /* Shlinkly */,
@@ -261,6 +296,26 @@
 			productReference = 5D921DF02FE18CA800C98C47 /* ShareExtensionMac.appex */;
 			productType = "com.apple.product-type.app-extension";
 		};
+		5DFEED000000000000000001 /* ShlinklyWidget */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5DFEED000000000000000008 /* Build configuration list for PBXNativeTarget "ShlinklyWidget" */;
+			buildPhases = (
+				5DFEED000000000000000003 /* Sources */,
+				5DFEED000000000000000004 /* Frameworks */,
+				5DFEED000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5DFEED000000000000000006 /* ShlinklyWidget */,
+			);
+			name = ShlinklyWidget;
+			productName = ShlinklyWidget;
+			productReference = 5DFEED000000000000000002 /* ShlinklyWidget.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -278,6 +333,9 @@
 						CreatedOnToolsVersion = 26.5;
 					};
 					5D921DEF2FE18CA800C98C47 = {
+						CreatedOnToolsVersion = 26.5;
+					};
+					5DFEED000000000000000001 = {
 						CreatedOnToolsVersion = 26.5;
 					};
 				};
@@ -302,6 +360,7 @@
 				5D3060752FDA043400B01249 /* Shlinkly */,
 				5D921D4D2FE183E200C98C47 /* ShareExtensionIOS */,
 				5D921DEF2FE18CA800C98C47 /* ShareExtensionMac */,
+				5DFEED000000000000000001 /* ShlinklyWidget */,
 			);
 		};
 /* End PBXProject section */
@@ -322,6 +381,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		5D921DEE2FE18CA800C98C47 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5DFEED000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -354,6 +420,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		5DFEED000000000000000003 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -370,6 +443,12 @@
 			);
 			target = 5D921DEF2FE18CA800C98C47 /* ShareExtensionMac */;
 			targetProxy = 5D921DFA2FE18CA800C98C47 /* PBXContainerItemProxy */;
+		};
+		5DFEED00000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilter = ios;
+			target = 5DFEED000000000000000001 /* ShlinklyWidget */;
+			targetProxy = 5DFEED00000000000000000D /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -930,6 +1009,110 @@
 			};
 			name = "Release-Direct";
 		};
+		5DFEED000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShlinklyWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shlinkly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly.ShlinklyWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		5DFEED00000000000000000A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShlinklyWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shlinkly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly.ShlinklyWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5DFEED00000000000000000B /* Release-Direct */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 2;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = ShlinklyWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Shlinkly;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.6;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 2.0;
+				PRODUCT_BUNDLE_IDENTIFIER = de.ahodge.Shlinkly.ShlinklyWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = "Release-Direct";
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -969,6 +1152,16 @@
 				5D921DFD2FE18CA800C98C47 /* Debug */,
 				5D921DFE2FE18CA800C98C47 /* Release */,
 				5DA9B1E0000000000000A104 /* Release-Direct */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5DFEED000000000000000008 /* Build configuration list for PBXNativeTarget "ShlinklyWidget" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5DFEED000000000000000009 /* Debug */,
+				5DFEED00000000000000000A /* Release */,
+				5DFEED00000000000000000B /* Release-Direct */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
