@@ -16,6 +16,13 @@ struct ShlinklyWidget: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: LauncherProvider()) { _ in
             LauncherView()
+                // iOS 17+ requires the widget's background to be declared via
+                // `containerBackground` so the system knows what to strip in
+                // StandBy / Lock Screen contexts. Without it the content doesn't
+                // render at all on-device. `.fill.tertiary` is the neutral,
+                // theme-adaptive system fill; the brand accent stays on the
+                // glyphs and button underlays only.
+                .containerBackground(.fill.tertiary, for: .widget)
         }
         .configurationDisplayName("Quick Create")
         .description("Create a new short link, or one from your clipboard.")
