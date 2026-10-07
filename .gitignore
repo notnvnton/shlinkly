@@ -67,3 +67,6 @@ fastlane/test_output
 .AppleDouble
 .LSOverride
 ._*
+
+# Xcode Cloud manifest: created automatically by Xcode, not used by this project
+*.xcodeproj/xcshareddata/xcodecloud/
