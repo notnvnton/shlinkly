@@ -38,6 +38,9 @@ struct RootView: View {
         .sheet(isPresented: $showSettings) {
             SettingsView()
         }
+        // Hosted here, above the per-client ``ConfiguredRoot``, so the pill
+        // survives the subtree rebuild a server switch causes.
+        .spotlightNoticeToast()
         // Removing the last server drops back to onboarding; close Settings so it
         // isn't left hanging over the Welcome screen.
         .onChange(of: appModel.needsOnboarding) { _, onboarding in
@@ -117,6 +120,10 @@ private struct ConfiguredRoot: View {
     /// or offline) is swallowed — the user simply lands on the list, no error UI.
     private func handleDeepLink(_ deepLink: DeepLink?) {
         guard let deepLink else { return }
+        // A Spotlight link can arrive together with a server switch. This shell
+        // belongs to one client; if it's no longer the live one, it is about to
+        // be torn down — leave the link parked for the shell replacing it.
+        if case .spotlightLink = deepLink, appModel.client !== client { return }
         appModel.pendingDeepLink = nil
         switch deepLink {
         case .linkDetail(let shortCode):
@@ -129,6 +136,9 @@ private struct ConfiguredRoot: View {
                     }
                 }
             }
+        case .spotlightLink(let shortURL):
+            // Already fetched from its server by ``AppModel``; just show it.
+            navigate(to: shortURL)
         case .createLink(let fromClipboard):
             // The list screen owns the create sheet, so hand it the request
             // rather than navigating. Any open detail is dismissed first so the

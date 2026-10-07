@@ -25,12 +25,13 @@ struct SpotlightEntry: Sendable, Equatable {
 
         self.uniqueIdentifier = Self.uniqueIdentifier(linkID: link.id, serverID: serverID)
         self.domainIdentifier = serverID.uuidString
+        let longDisplay = Self.strippingScheme(link.longUrl)
         if linkTitle.isEmpty {
             self.title = shortDisplay
-            self.contentDescription = link.longUrl
+            self.contentDescription = longDisplay
         } else {
             self.title = linkTitle
-            self.contentDescription = "\(shortDisplay) · \(link.longUrl)"
+            self.contentDescription = "\(shortDisplay) · \(longDisplay)"
         }
         var keywords = link.tags
         keywords.append(link.shortCode)
@@ -48,6 +49,42 @@ struct SpotlightEntry: Sendable, Equatable {
     static func strippingScheme(_ url: String) -> String {
         guard let range = url.range(of: "://") else { return url }
         return String(url[range.upperBound...])
+    }
+}
+
+/// A Spotlight entry's unique identifier taken apart again: which server the
+/// link lives on and how to ask that server for it. The inverse of
+/// ``SpotlightEntry/uniqueIdentifier(linkID:serverID:)``.
+struct SpotlightLinkReference: Sendable, Equatable {
+    let serverID: UUID
+    /// The link's domain, or `nil` for the server's default domain.
+    let domain: String?
+    let shortCode: String
+
+    /// The link's ``ShortURL/id`` — the part of the identifier after the server.
+    var linkID: String { ShortURL.identity(shortCode: shortCode, domain: domain) }
+
+    init(serverID: UUID, domain: String?, shortCode: String) {
+        self.serverID = serverID
+        self.domain = domain
+        self.shortCode = shortCode
+    }
+
+    /// Parses `"{server UUID}/{domain or DEFAULT}/{shortCode}"`. Only the first
+    /// two slashes separate parts, so a multi-segment short code survives
+    /// intact. Returns `nil` for anything malformed: a missing or empty part,
+    /// or a server segment that isn't a UUID.
+    init?(uniqueIdentifier: String) {
+        let parts = uniqueIdentifier.split(separator: "/", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3,
+              let serverID = UUID(uuidString: String(parts[0])),
+              !parts[1].isEmpty,
+              !parts[2].isEmpty else {
+            return nil
+        }
+        self.serverID = serverID
+        self.domain = parts[1] == "DEFAULT" ? nil : String(parts[1])
+        self.shortCode = String(parts[2])
     }
 }
 
@@ -131,6 +168,23 @@ public actor SpotlightIndexer {
     /// Whether the system says this device can index at all.
     public nonisolated static var isIndexingAvailable: Bool {
         CSSearchableIndex.isIndexingAvailable()
+    }
+
+    /// The activity type the system hands the app when a search result is
+    /// tapped (`CSSearchableItemActionType`), re-exported so the app layer can
+    /// subscribe without importing Core Spotlight.
+    public nonisolated static var searchResultActivityType: String { CSSearchableItemActionType }
+
+    /// Pulls the tapped entry's unique identifier out of a search-result
+    /// activity, or `nil` (logged) when the activity isn't one or carries none.
+    public nonisolated static func tappedIdentifier(from activity: NSUserActivity) -> String? {
+        guard activity.activityType == CSSearchableItemActionType else { return nil }
+        guard let identifier = activity.userInfo?[CSSearchableItemActivityIdentifier] as? String else {
+            log.error("Spotlight: tap received without an entry identifier")
+            return nil
+        }
+        log.notice("Spotlight: tap received")
+        return identifier
     }
 
     /// The first 8 characters of a server's UUID — how servers are named in the

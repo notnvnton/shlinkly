@@ -17,17 +17,24 @@ struct CopiedToast: View {
             Text("Copied")
                 .foregroundStyle(.primary)
         }
-        .font(.subheadline.weight(.medium))
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(.regularMaterial, in: Capsule())
-        .overlay(Capsule().strokeBorder(.separator))
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+        .toastPill()
         .accessibilityLabel("Copied to clipboard")
     }
 }
 
 extension View {
+    /// The floating-pill look shared by the app's transient toasts: medium
+    /// subheadline text on a material capsule with a hairline border and a
+    /// soft shadow.
+    func toastPill() -> some View {
+        font(.subheadline.weight(.medium))
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
+            .background(.regularMaterial, in: Capsule())
+            .overlay(Capsule().strokeBorder(.separator))
+            .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+    }
+
     /// Overlays a transient "Copied" toast near the bottom edge while
     /// `isPresented` is true. The caller flips `isPresented` (with animation) and
     /// schedules flipping it back; this just renders the fade.

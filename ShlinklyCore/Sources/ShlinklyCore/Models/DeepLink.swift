@@ -16,6 +16,13 @@ public enum DeepLink: Equatable, Sendable {
     /// the intent, so no other process ever touches the pasteboard.
     case createLink(fromClipboard: Bool)
 
+    /// Open the detail screen of a short URL picked from a Spotlight search
+    /// result. Unlike ``linkDetail(shortCode:)`` this never comes from a URL —
+    /// ``parse(_:)`` doesn't produce it. ``AppModel`` parks it once the link has
+    /// been fetched from its server (and that server made active), so the
+    /// navigation shell only has to show it.
+    case spotlightLink(ShortURL)
+
     /// Parses a `shlinkly://` URL into a ``DeepLink``.
     ///
     /// Recognised shapes (scheme and host are matched case-insensitively, per
