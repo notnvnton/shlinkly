@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import os
 
 /// Top-level application state: which Shlink server is active, and a client
 /// configured to talk to it.
@@ -87,7 +88,7 @@ public final class AppModel {
     /// read) the app stays deactivated and onboarding takes over.
     public func bootstrap() {
         // The servers are loaded by now, whichever way activation goes below.
-        defer { syncSpotlight() }
+        defer { syncSpotlight(trigger: "bootstrap") }
         guard let active = instanceStore.activeInstance,
               let key = instanceStore.apiKey(for: active.id) else {
             deactivate()
@@ -130,7 +131,7 @@ public final class AppModel {
         if !activeStillPresent {
             bootstrap()
         }
-        syncSpotlight()
+        syncSpotlight(trigger: "refreshFromStore")
     }
 
     // MARK: - Spotlight
@@ -140,15 +141,26 @@ public final class AppModel {
     /// reindex when its last one is over a day old (or never happened),
     /// otherwise a light top-up of its newest links. Low priority, never blocks
     /// the UI, failures only reach the log. A no-op while a sync is running.
-    public func syncSpotlight() {
-        guard let spotlight, spotlightSyncTask == nil else { return }
+    ///
+    /// - Parameter trigger: Who asked, for the log only.
+    public func syncSpotlight(trigger: String = "manual") {
+        guard let spotlight else { return }
+        let log = SpotlightIndexer.log
+        guard spotlightSyncTask == nil else {
+            log.notice("Spotlight: sync skipped (trigger: \(trigger, privacy: .public)) — one is already running")
+            return
+        }
         let currentServerIDs = instanceStore.instances.map(\.id)
         let session = urlSession
         let servers: [(id: UUID, client: ShlinkClient)] = instanceStore.instances.compactMap { instance in
-            guard let key = instanceStore.apiKey(for: instance.id), !key.isEmpty else { return nil }
+            guard let key = instanceStore.apiKey(for: instance.id), !key.isEmpty else {
+                log.notice("Spotlight: server \(SpotlightIndexer.shortID(instance.id), privacy: .public): skipped — no API key")
+                return nil
+            }
             // A private client with no mutation observer: reads only.
             return (instance.id, ShlinkClient(baseURL: instance.restRoot, apiKey: key, urlSession: session))
         }
+        log.notice("Spotlight: sync started (trigger: \(trigger, privacy: .public)) — \(currentServerIDs.count, privacy: .public) server(s), \(servers.count, privacy: .public) with a key, indexing available: \(SpotlightIndexer.isIndexingAvailable, privacy: .public)")
         spotlightSyncTask = Task(priority: .utility) { [weak self] in
             await spotlight.sync(servers: servers, currentServerIDs: currentServerIDs)
             self?.spotlightSyncTask = nil

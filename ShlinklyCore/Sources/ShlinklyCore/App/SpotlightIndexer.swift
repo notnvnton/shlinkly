@@ -123,7 +123,21 @@ public actor SpotlightIndexer {
     private static let lastReindexKey = "shlinkly.spotlight.lastReindex"
     private static let knownServersKey = "shlinkly.spotlight.knownServers"
 
-    private static let log = Logger(subsystem: "de.ahodge.shlinkly", category: "Spotlight")
+    /// Every message starts with "Spotlight:" so the Xcode console filter finds
+    /// the whole lifecycle. Servers appear only as ``shortID(_:)``; link texts
+    /// are never logged.
+    static let log = Logger(subsystem: "de.ahodge.shlinkly", category: "Spotlight")
+
+    /// Whether the system says this device can index at all.
+    public nonisolated static var isIndexingAvailable: Bool {
+        CSSearchableIndex.isIndexingAvailable()
+    }
+
+    /// The first 8 characters of a server's UUID — how servers are named in the
+    /// log, instead of their name or address.
+    nonisolated static func shortID(_ serverID: UUID) -> String {
+        String(serverID.uuidString.prefix(8))
+    }
 
     /// What ``sync(sources:currentServerIDs:)`` needs to know about a server:
     /// its id and how to load its links. Closures rather than a client so tests
@@ -184,17 +198,25 @@ public actor SpotlightIndexer {
     func sync(sources: [ServerSource], currentServerIDs: [UUID]) async {
         await reconcile(currentServerIDs: currentServerIDs)
         for source in sources {
-            guard !Task.isCancelled else { return }
-            do {
-                if needsReindex(serverID: source.id) {
-                    try await fullReindex(serverID: source.id, load: source.loadAll)
-                } else {
-                    try await indexRecent(serverID: source.id, load: source.loadRecent)
-                }
-            } catch {
-                Self.log.error("sync failed for server \(source.id.uuidString, privacy: .public): \(String(describing: error), privacy: .public)")
+            let server = Self.shortID(source.id)
+            guard !Task.isCancelled else {
+                Self.log.notice("Spotlight: server \(server, privacy: .public): skipped — sync was cancelled")
+                return
+            }
+            let last = lastReindex(for: source.id)
+            let lastText = last.map { $0.formatted(.iso8601) } ?? "never"
+            // Failures are logged where they happen (inside the two calls), so
+            // the pass just moves on to the next server.
+            if needsReindex(serverID: source.id) {
+                let reason = last == nil ? "never reindexed" : "last full reindex is over 24h old"
+                Self.log.notice("Spotlight: server \(server, privacy: .public): full reindex — \(reason, privacy: .public) (last: \(lastText, privacy: .public))")
+                try? await fullReindex(serverID: source.id, load: source.loadAll)
+            } else {
+                Self.log.notice("Spotlight: server \(server, privacy: .public): top-up — full reindex is fresh (last: \(lastText, privacy: .public))")
+                _ = try? await indexRecent(serverID: source.id, load: source.loadRecent)
             }
         }
+        Self.log.notice("Spotlight: sync finished")
     }
 
     // MARK: - Per-server
@@ -212,15 +234,24 @@ public actor SpotlightIndexer {
         reindexing.insert(serverID)
         defer { reindexing.remove(serverID) }
 
-        let links = try await load()
-        try Task.checkCancellation()
-        let expiration = now().addingTimeInterval(Self.entryLifetime)
-        let entries = links.map { SpotlightEntry(link: $0, serverID: serverID, expirationDate: expiration) }
+        let server = Self.shortID(serverID)
+        do {
+            let links = try await load()
+            Self.log.notice("Spotlight: server \(server, privacy: .public): full reindex loaded \(links.count, privacy: .public) links")
+            try Task.checkCancellation()
+            let expiration = now().addingTimeInterval(Self.entryLifetime)
+            let entries = links.map { SpotlightEntry(link: $0, serverID: serverID, expirationDate: expiration) }
 
-        try await index.deleteEntries(withDomainIdentifiers: [serverID.uuidString])
-        markKnown(serverID)
-        try await index.index(entries)
-        setLastReindex(now(), for: serverID)
+            try await index.deleteEntries(withDomainIdentifiers: [serverID.uuidString])
+            Self.log.notice("Spotlight: server \(server, privacy: .public): full reindex deleted the server's old entries")
+            markKnown(serverID)
+            try await index.index(entries)
+            setLastReindex(now(), for: serverID)
+            Self.log.notice("Spotlight: server \(server, privacy: .public): full reindex wrote \(entries.count, privacy: .public) entries")
+        } catch {
+            Self.log.error("Spotlight: server \(server, privacy: .public): full reindex failed — \(String(describing: error), privacy: .public)")
+            throw error
+        }
     }
 
     /// The light top-up between full reindexes: upserts the server's newest
@@ -230,14 +261,27 @@ public actor SpotlightIndexer {
     /// `false` — while that server's full reindex is in flight.
     @discardableResult
     func indexRecent(serverID: UUID, load: @Sendable () async throws -> [ShortURL]) async throws -> Bool {
-        guard !reindexing.contains(serverID) else { return false }
-        let links = try await load()
-        // The reindex may have started while the page was loading.
-        guard !reindexing.contains(serverID) else { return false }
-        let expiration = now().addingTimeInterval(Self.entryLifetime)
-        markKnown(serverID)
-        try await index.index(links.map { SpotlightEntry(link: $0, serverID: serverID, expirationDate: expiration) })
-        return true
+        let server = Self.shortID(serverID)
+        guard !reindexing.contains(serverID) else {
+            Self.log.notice("Spotlight: server \(server, privacy: .public): top-up skipped — full reindex in flight")
+            return false
+        }
+        do {
+            let links = try await load()
+            // The reindex may have started while the page was loading.
+            guard !reindexing.contains(serverID) else {
+                Self.log.notice("Spotlight: server \(server, privacy: .public): top-up skipped — full reindex in flight (got \(links.count, privacy: .public) links)")
+                return false
+            }
+            let expiration = now().addingTimeInterval(Self.entryLifetime)
+            markKnown(serverID)
+            try await index.index(links.map { SpotlightEntry(link: $0, serverID: serverID, expirationDate: expiration) })
+            Self.log.notice("Spotlight: server \(server, privacy: .public): top-up got \(links.count, privacy: .public) links, wrote \(links.count, privacy: .public) entries")
+            return true
+        } catch {
+            Self.log.error("Spotlight: server \(server, privacy: .public): top-up failed — \(String(describing: error), privacy: .public)")
+            throw error
+        }
     }
 
     // MARK: - Point updates
@@ -250,10 +294,12 @@ public actor SpotlightIndexer {
             expirationDate: now().addingTimeInterval(Self.entryLifetime)
         )
         markKnown(serverID)
+        let server = Self.shortID(serverID)
         do {
             try await index.index([entry])
+            Self.log.notice("Spotlight: server \(server, privacy: .public): upsert of 1 entry succeeded")
         } catch {
-            Self.log.error("upsert failed: \(String(describing: error), privacy: .public)")
+            Self.log.error("Spotlight: server \(server, privacy: .public): upsert failed — \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -261,10 +307,12 @@ public actor SpotlightIndexer {
     /// Best-effort: a failure is logged.
     public func remove(linkID: String, serverID: UUID) async {
         let identifier = SpotlightEntry.uniqueIdentifier(linkID: linkID, serverID: serverID)
+        let server = Self.shortID(serverID)
         do {
             try await index.deleteEntries(withIdentifiers: [identifier])
+            Self.log.notice("Spotlight: server \(server, privacy: .public): remove of 1 entry succeeded")
         } catch {
-            Self.log.error("remove failed: \(String(describing: error), privacy: .public)")
+            Self.log.error("Spotlight: server \(server, privacy: .public): remove failed — \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -281,8 +329,9 @@ public actor SpotlightIndexer {
             var known = knownServers
             known.remove(serverID.uuidString)
             knownServers = known
+            Self.log.notice("Spotlight: server \(Self.shortID(serverID), privacy: .public): removed from the index")
         } catch {
-            Self.log.error("removing server \(serverID.uuidString, privacy: .public) failed: \(String(describing: error), privacy: .public)")
+            Self.log.error("Spotlight: server \(Self.shortID(serverID), privacy: .public): removing from the index failed — \(String(describing: error), privacy: .public)")
         }
     }
 
@@ -290,7 +339,14 @@ public actor SpotlightIndexer {
     /// longer configured.
     public func reconcile(currentServerIDs: [UUID]) async {
         let current = Set(currentServerIDs.map(\.uuidString))
-        for stale in knownServers.subtracting(current).sorted() {
+        let staleServers = knownServers.subtracting(current).sorted()
+        if staleServers.isEmpty {
+            Self.log.notice("Spotlight: reconcile — no stale servers (\(self.knownServers.count, privacy: .public) known)")
+        } else {
+            let names = staleServers.map { String($0.prefix(8)) }.joined(separator: ", ")
+            Self.log.notice("Spotlight: reconcile — removing \(staleServers.count, privacy: .public) stale server(s): \(names, privacy: .public)")
+        }
+        for stale in staleServers {
             guard let id = UUID(uuidString: stale) else {
                 var known = knownServers
                 known.remove(stale)
