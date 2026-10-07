@@ -93,6 +93,29 @@ public actor ShlinkClient {
         let shortUrls: Pagination<ShortURL>
     }
 
+    /// Loads *every* short URL on the server by walking the paginated
+    /// `/short-urls` endpoint to the end — no search term, no tag filter.
+    /// Oldest first, so a link created mid-walk lands at the end instead of
+    /// shifting items across pages. Cooperatively cancellable: it checks before
+    /// each page so a superseded load stops promptly.
+    public func allShortURLs() async throws -> [ShortURL] {
+        let pageSize = 200
+        var all: [ShortURL] = []
+        var page = 1
+        while true {
+            try Task.checkCancellation()
+            let result = try await shortURLs(page: page, itemsPerPage: pageSize, orderBy: .oldest)
+            all.append(contentsOf: result.data)
+            // Stop at the last page; an empty page also ends the walk, so a
+            // `pagesCount` of 0 can't loop forever.
+            if result.data.isEmpty || result.pagination.currentPage >= result.pagination.pagesCount {
+                break
+            }
+            page += 1
+        }
+        return all
+    }
+
     /// Fetches one page of tag names.
     ///
     /// Mirrors `GET /tags` from the canonical OpenAPI spec (verified against
