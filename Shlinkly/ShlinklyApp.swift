@@ -98,6 +98,14 @@ struct ShlinklyApp: App {
                     appModel.pendingDeepLink = deepLink
                 }
             }
+            // A tapped Spotlight result arrives as a user activity carrying the
+            // entry's identifier; the model resolves it (fetching the link and
+            // switching server if needed) and parks the link for the shell.
+            .onContinueUserActivity(SpotlightIndexer.searchResultActivityType) { activity in
+                if let identifier = SpotlightIndexer.tappedIdentifier(from: activity) {
+                    appModel.openSpotlightResult(identifier: identifier)
+                }
+            }
             #else
             // macOS routes deep links through the AppDelegate (so they land in the
             // existing window). Wire the delegate to the shared model once the scene

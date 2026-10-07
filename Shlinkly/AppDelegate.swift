@@ -26,12 +26,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var appModel: AppModel? {
         didSet {
             flushBufferedDeepLink()
+            flushBufferedSpotlightIdentifier()
             startMenuBarIfNeeded()
         }
     }
 
     /// A deep link that arrived before ``appModel`` was wired up (cold launch).
     private var bufferedDeepLink: DeepLink?
+
+    /// A tapped Spotlight result that arrived before ``appModel`` was wired up.
+    private var bufferedSpotlightIdentifier: String?
 
     /// The menu-bar status item's controller, owned here for the app's lifetime.
     /// Created once, from the injected ``appModel`` (no singleton model).
@@ -77,6 +81,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         guard let appModel, let buffered = bufferedDeepLink else { return }
         appModel.pendingDeepLink = buffered
         bufferedDeepLink = nil
+    }
+
+    // MARK: - Spotlight
+
+    /// AppKit delivers a tapped Spotlight result here. Hand the entry's
+    /// identifier to the shared model (or buffer it until the model is wired),
+    /// then show the window via the same single path deep links use.
+    func application(
+        _ application: NSApplication,
+        continue userActivity: NSUserActivity,
+        restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void
+    ) -> Bool {
+        guard userActivity.activityType == SpotlightIndexer.searchResultActivityType else { return false }
+        guard let identifier = SpotlightIndexer.tappedIdentifier(from: userActivity) else { return false }
+        if let appModel {
+            appModel.openSpotlightResult(identifier: identifier)
+        } else {
+            bufferedSpotlightIdentifier = identifier
+        }
+        MacWindowManager.shared.showMainWindow()
+        return true
+    }
+
+    private func flushBufferedSpotlightIdentifier() {
+        guard let appModel, let buffered = bufferedSpotlightIdentifier else { return }
+        bufferedSpotlightIdentifier = nil
+        appModel.openSpotlightResult(identifier: buffered)
     }
 
     // MARK: - Menu bar

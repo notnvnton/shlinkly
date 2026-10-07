@@ -48,6 +48,31 @@ public final class AppModel {
         }
     }
 
+    /// Feedback for a tapped Spotlight result, awaiting display as a transient
+    /// pill: the server was switched, or the link couldn't be opened. The view
+    /// that shows it clears it. `nil` when there's nothing to say.
+    public var spotlightNotice: SpotlightNotice?
+
+    /// One piece of Spotlight-tap feedback. Identified per occurrence so the
+    /// same message twice in a row is still shown twice.
+    public struct SpotlightNotice: Equatable, Sendable, Identifiable {
+        public enum Kind: Equatable, Sendable {
+            /// The tapped link lives on another server, which is now active.
+            case switchedServer(name: String)
+            /// The link (or its whole server) is gone.
+            case linkGone
+            /// The link couldn't be fetched — offline, bad key, anything else.
+            case openFailed
+        }
+
+        public let id = UUID()
+        public let kind: Kind
+
+        public init(kind: Kind) {
+            self.kind = kind
+        }
+    }
+
     /// The persisted servers + active selection. Exposed so Settings can list and
     /// edit them; mutate it through this model's methods so ``client`` stays in
     /// sync.
@@ -67,6 +92,9 @@ public final class AppModel {
     /// The Spotlight sync in flight, if any. At most one runs at a time: a
     /// trigger that arrives while it's set is dropped.
     private var spotlightSyncTask: Task<Void, Never>?
+
+    /// The Spotlight tap being resolved, if any. A newer tap supersedes it.
+    private var spotlightOpenTask: Task<Void, Never>?
 
     public init(
         instanceStore: InstanceStore = InstanceStore(),
@@ -165,6 +193,91 @@ public final class AppModel {
             await spotlight.sync(servers: servers, currentServerIDs: currentServerIDs)
             self?.spotlightSyncTask = nil
         }
+    }
+
+    /// Opens the short URL behind a tapped Spotlight result, given the entry's
+    /// unique identifier.
+    ///
+    /// The link is fetched first, by short code *and* domain, through a
+    /// throwaway client for the server it lives on — nothing changes on screen
+    /// until the server has answered. Only then is that server made active (if
+    /// it wasn't; announced through ``spotlightNotice``) and the link parked on
+    /// ``pendingDeepLink`` for the navigation shell. On any failure the active
+    /// server and the screen stay as they were, the index is cleaned up where
+    /// the entry turned out stale (link or server gone), and ``spotlightNotice``
+    /// says what happened — a tap never ends in silence.
+    public func openSpotlightResult(identifier: String) {
+        let log = SpotlightIndexer.log
+        spotlightOpenTask?.cancel()
+        spotlightOpenTask = nil
+
+        guard let reference = SpotlightLinkReference(uniqueIdentifier: identifier) else {
+            log.error("Spotlight: tap — malformed entry identifier, ignoring")
+            spotlightNotice = .init(kind: .openFailed)
+            return
+        }
+        let serverID = reference.serverID
+        let server = SpotlightIndexer.shortID(serverID)
+
+        guard let instance = instanceStore.instances.first(where: { $0.id == serverID }) else {
+            log.notice("Spotlight: tap — server \(server, privacy: .public) is no longer configured; removing its entries")
+            if let spotlight {
+                Task(priority: .utility) { await spotlight.removeServer(serverID) }
+            }
+            spotlightNotice = .init(kind: .linkGone)
+            return
+        }
+        guard let key = instanceStore.apiKey(for: serverID), !key.isEmpty else {
+            log.error("Spotlight: tap — server \(server, privacy: .public) has no API key; not opening")
+            spotlightNotice = .init(kind: .openFailed)
+            return
+        }
+
+        let isActive = serverID == activeInstance?.id
+        log.notice("Spotlight: tap — server \(server, privacy: .public) (\(isActive ? "active" : "not active", privacy: .public)); fetching the link")
+        // Throwaway and observer-less: a read that must not touch the live session.
+        let fetcher = ShlinkClient(baseURL: instance.restRoot, apiKey: key, urlSession: urlSession)
+        spotlightOpenTask = Task { [weak self] in
+            do {
+                let link = try await fetcher.shortURL(shortCode: reference.shortCode, domain: reference.domain)
+                guard !Task.isCancelled, let self else { return }
+                self.finishSpotlightOpen(link, serverID: serverID)
+            } catch {
+                guard !Task.isCancelled, let self else { return }
+                if case ShlinkError.notFound = error {
+                    log.notice("Spotlight: tap — server \(server, privacy: .public): link no longer exists (404); removing its entry")
+                    if let spotlight = self.spotlight {
+                        Task(priority: .utility) { await spotlight.remove(linkID: reference.linkID, serverID: serverID) }
+                    }
+                    self.spotlightNotice = .init(kind: .linkGone)
+                } else {
+                    log.error("Spotlight: tap — server \(server, privacy: .public): fetching the link failed — \(String(describing: error), privacy: .public)")
+                    self.spotlightNotice = .init(kind: .openFailed)
+                }
+            }
+        }
+    }
+
+    /// The success half of ``openSpotlightResult(identifier:)``: the server has
+    /// returned the link, so switch to that server if needed and hand the link
+    /// to the navigation shell.
+    private func finishSpotlightOpen(_ link: ShortURL, serverID: UUID) {
+        let log = SpotlightIndexer.log
+        let server = SpotlightIndexer.shortID(serverID)
+        if serverID != activeInstance?.id {
+            selectInstance(serverID)
+            // The server may have been removed, or lost its key, while the
+            // fetch was in flight.
+            guard let active = activeInstance, active.id == serverID else {
+                log.error("Spotlight: tap — server \(server, privacy: .public): could not be activated; not opening")
+                spotlightNotice = .init(kind: .openFailed)
+                return
+            }
+            log.notice("Spotlight: tap — switched the active server to \(server, privacy: .public)")
+            spotlightNotice = .init(kind: .switchedServer(name: active.displayName))
+        }
+        log.notice("Spotlight: tap — server \(server, privacy: .public): opening the link")
+        pendingDeepLink = .spotlightLink(link)
     }
 
     /// The observer handed to the live client so links created, edited or

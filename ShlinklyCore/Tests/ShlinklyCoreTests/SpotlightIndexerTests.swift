@@ -96,7 +96,7 @@ struct SpotlightEntryTests {
         #expect(entry.uniqueIdentifier == "\(serverID.uuidString)/go.example/abc")
         #expect(entry.domainIdentifier == serverID.uuidString)
         #expect(entry.title == "Launch post")
-        #expect(entry.contentDescription == "go.example/abc · https://example.com/abc")
+        #expect(entry.contentDescription == "go.example/abc · example.com/abc")
         #expect(entry.keywords == ["news", "2026", "abc", "go.example"])
         #expect(entry.expirationDate == expiration)
     }
@@ -106,7 +106,7 @@ struct SpotlightEntryTests {
         for title in [nil, "", "   "] as [String?] {
             let entry = SpotlightEntry(link: makeLink("abc", title: title), serverID: serverID, expirationDate: expiration)
             #expect(entry.title == "doma.in/abc")
-            #expect(entry.contentDescription == "https://example.com/abc")
+            #expect(entry.contentDescription == "example.com/abc")
         }
     }
 
@@ -115,6 +115,59 @@ struct SpotlightEntryTests {
         let entry = SpotlightEntry(link: makeLink("abc", tags: ["t"]), serverID: serverID, expirationDate: expiration)
         #expect(entry.keywords == ["t", "abc"])
         #expect(entry.uniqueIdentifier == "\(serverID.uuidString)/DEFAULT/abc")
+    }
+}
+
+struct SpotlightLinkReferenceTests {
+    private let serverID = UUID()
+
+    @Test("Parses server, custom domain and short code")
+    func customDomain() {
+        let reference = SpotlightLinkReference(uniqueIdentifier: "\(serverID.uuidString)/go.example/abc123")
+        #expect(reference == SpotlightLinkReference(serverID: serverID, domain: "go.example", shortCode: "abc123"))
+    }
+
+    @Test("DEFAULT decodes to the default domain (nil)")
+    func defaultDomain() {
+        let reference = SpotlightLinkReference(uniqueIdentifier: "\(serverID.uuidString)/DEFAULT/abc123")
+        #expect(reference == SpotlightLinkReference(serverID: serverID, domain: nil, shortCode: "abc123"))
+    }
+
+    @Test("A multi-segment short code keeps its slashes")
+    func multiSegmentShortCode() {
+        let reference = SpotlightLinkReference(uniqueIdentifier: "\(serverID.uuidString)/DEFAULT/docs/2026/intro")
+        #expect(reference?.shortCode == "docs/2026/intro")
+        #expect(reference?.domain == nil)
+    }
+
+    @Test("Round-trips the identifier an entry is indexed under")
+    func roundTrip() {
+        for domain in [nil, "go.example"] as [String?] {
+            let link = makeLink("AbC", domain: domain)
+            let entry = SpotlightEntry(link: link, serverID: serverID, expirationDate: .now)
+            let reference = SpotlightLinkReference(uniqueIdentifier: entry.uniqueIdentifier)
+            #expect(reference == SpotlightLinkReference(serverID: serverID, domain: domain, shortCode: "AbC"))
+            #expect(reference?.linkID == link.id)
+        }
+    }
+
+    @Test("Malformed identifiers are rejected")
+    func malformed() {
+        let id = serverID.uuidString
+        let broken = [
+            "",
+            "garbage",
+            id,
+            "\(id)/",
+            "\(id)/DEFAULT",
+            "\(id)/DEFAULT/",
+            "\(id)//abc",
+            "not-a-uuid/DEFAULT/abc",
+            "/DEFAULT/abc",
+        ]
+        for identifier in broken {
+            #expect(SpotlightLinkReference(uniqueIdentifier: identifier) == nil, "\(identifier)")
+        }
     }
 }
 
