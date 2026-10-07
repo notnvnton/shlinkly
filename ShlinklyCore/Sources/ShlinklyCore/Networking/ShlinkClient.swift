@@ -1,5 +1,27 @@
 import Foundation
 
+/// Callbacks a ``ShlinkClient`` fires after the server has confirmed a write to
+/// a short URL, so a host can mirror the change elsewhere (the main app keeps
+/// its Spotlight index in step this way).
+///
+/// Strictly fire-and-forget: the callbacks are synchronous, can't throw and
+/// return nothing, so whatever they kick off can never change — or delay — the
+/// outcome of the create / update / delete that triggered them.
+public struct ShortURLMutationObserver: Sendable {
+    /// A short URL was created or updated; carries the server's fresh copy.
+    public let didSave: @Sendable (ShortURL) -> Void
+    /// A short URL was deleted (or was already gone).
+    public let didDelete: @Sendable (_ shortCode: String, _ domain: String?) -> Void
+
+    public init(
+        didSave: @escaping @Sendable (ShortURL) -> Void,
+        didDelete: @escaping @Sendable (_ shortCode: String, _ domain: String?) -> Void
+    ) {
+        self.didSave = didSave
+        self.didDelete = didDelete
+    }
+}
+
 /// A thread-safe client for the Shlink REST API v3.
 ///
 /// Implemented as an `actor` so it can be shared freely across tasks without
@@ -15,16 +37,26 @@ public actor ShlinkClient {
     private let urlSession: URLSession
     private let decoder: JSONDecoder
     private let encoder: JSONEncoder
+    private let mutationObserver: ShortURLMutationObserver?
 
     /// - Parameters:
     ///   - baseURL: The versioned REST root, e.g. `https://example.com/rest/v3/`.
     ///     A trailing slash is recommended so relative paths resolve correctly.
     ///   - apiKey: The Shlink API key, sent as the `X-Api-Key` header.
     ///   - urlSession: The session used for requests. Defaults to `.shared`.
-    public init(baseURL: URL, apiKey: String, urlSession: URLSession = .shared) {
+    ///   - mutationObserver: Told about successful short-URL writes. `nil` by
+    ///     default — only the main app's live client sets one; the Share
+    ///     Extensions, the widget and ``ActiveServerResolver`` never do.
+    public init(
+        baseURL: URL,
+        apiKey: String,
+        urlSession: URLSession = .shared,
+        mutationObserver: ShortURLMutationObserver? = nil
+    ) {
         self.baseURL = baseURL
         self.apiKey = apiKey
         self.urlSession = urlSession
+        self.mutationObserver = mutationObserver
         self.decoder = ShlinkClient.makeDecoder()
         self.encoder = JSONEncoder()
     }
@@ -295,7 +327,9 @@ public actor ShlinkClient {
         var request = try makeRequest(path: "short-urls", method: "POST")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
-        return try await send(request)
+        let created: ShortURL = try await send(request)
+        mutationObserver?.didSave(created)
+        return created
     }
 
     /// One-shot creation of a short URL from a raw long URL, with the server
@@ -329,7 +363,9 @@ public actor ShlinkClient {
         var request = try makeRequest(path: "short-urls/\(shortCode)", method: "PATCH", queryItems: queryItems)
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try encoder.encode(body)
-        return try await send(request)
+        let updated: ShortURL = try await send(request)
+        mutationObserver?.didSave(updated)
+        return updated
     }
 
     /// Deletes a short URL via `DELETE /short-urls/{shortCode}` (HTTP 204).
@@ -347,8 +383,9 @@ public actor ShlinkClient {
         do {
             try await sendNoContent(request)
         } catch ShlinkError.notFound {
-            return
+            // Already gone — still a successful delete, handled below.
         }
+        mutationObserver?.didDelete(shortCode, domain)
     }
 
     // MARK: - Request building & transport
