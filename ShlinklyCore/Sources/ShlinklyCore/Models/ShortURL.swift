@@ -81,5 +81,11 @@ extension ShortURL: Identifiable {
     /// A stable identity for list diffing. `shortCode` is unique only within a
     /// domain, so the domain is folded in to stay correct when a result set
     /// spans the default domain plus custom ones.
-    public var id: String { "\(domain ?? "DEFAULT")/\(shortCode)" }
+    public var id: String { Self.identity(shortCode: shortCode, domain: domain) }
+
+    /// Builds the same identity ``id`` returns from its two parts, for callers
+    /// that only know the short code and domain (e.g. after a delete).
+    public static func identity(shortCode: String, domain: String?) -> String {
+        "\(domain ?? "DEFAULT")/\(shortCode)"
+    }
 }

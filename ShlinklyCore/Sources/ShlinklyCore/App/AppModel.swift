@@ -58,14 +58,25 @@ public final class AppModel {
     /// Session used for every client this model vends. Injected for testability.
     private let urlSession: URLSession
 
+    /// Keeps the system search index in step with the servers' links, or `nil`
+    /// to leave Spotlight alone. Only this model — i.e. the main app — ever
+    /// drives it; the Share Extensions and the widget don't build an ``AppModel``.
+    private let spotlight: SpotlightIndexer?
+
+    /// The Spotlight sync in flight, if any. At most one runs at a time: a
+    /// trigger that arrives while it's set is dropped.
+    private var spotlightSyncTask: Task<Void, Never>?
+
     public init(
         instanceStore: InstanceStore = InstanceStore(),
         preferences: AppPreferences = AppPreferences(),
-        urlSession: URLSession = .shared
+        urlSession: URLSession = .shared,
+        spotlight: SpotlightIndexer? = SpotlightIndexer()
     ) {
         self.instanceStore = instanceStore
         self.preferences = preferences
         self.urlSession = urlSession
+        self.spotlight = spotlight
     }
 
     /// True when there are no configured servers — the app should onboard.
@@ -75,6 +86,8 @@ public final class AppModel {
     /// Call once at launch. When no server is configured (or its key can't be
     /// read) the app stays deactivated and onboarding takes over.
     public func bootstrap() {
+        // The servers are loaded by now, whichever way activation goes below.
+        defer { syncSpotlight() }
         guard let active = instanceStore.activeInstance,
               let key = instanceStore.apiKey(for: active.id) else {
             deactivate()
@@ -88,7 +101,12 @@ public final class AppModel {
     /// client talks to the instance's ``ServerInstance/restRoot``.
     public func activate(_ instance: ServerInstance, apiKey: String) {
         activeInstance = instance
-        client = ShlinkClient(baseURL: instance.restRoot, apiKey: apiKey, urlSession: urlSession)
+        client = ShlinkClient(
+            baseURL: instance.restRoot,
+            apiKey: apiKey,
+            urlSession: urlSession,
+            mutationObserver: spotlightObserver(for: instance.id)
+        )
     }
 
     /// Clears the active server and tears down the client.
@@ -112,6 +130,45 @@ public final class AppModel {
         if !activeStillPresent {
             bootstrap()
         }
+        syncSpotlight()
+    }
+
+    // MARK: - Spotlight
+
+    /// Brings the Spotlight index up to date in the background: drops servers
+    /// that are gone, then walks every server that has an API key — a full
+    /// reindex when its last one is over a day old (or never happened),
+    /// otherwise a light top-up of its newest links. Low priority, never blocks
+    /// the UI, failures only reach the log. A no-op while a sync is running.
+    public func syncSpotlight() {
+        guard let spotlight, spotlightSyncTask == nil else { return }
+        let currentServerIDs = instanceStore.instances.map(\.id)
+        let session = urlSession
+        let servers: [(id: UUID, client: ShlinkClient)] = instanceStore.instances.compactMap { instance in
+            guard let key = instanceStore.apiKey(for: instance.id), !key.isEmpty else { return nil }
+            // A private client with no mutation observer: reads only.
+            return (instance.id, ShlinkClient(baseURL: instance.restRoot, apiKey: key, urlSession: session))
+        }
+        spotlightSyncTask = Task(priority: .utility) { [weak self] in
+            await spotlight.sync(servers: servers, currentServerIDs: currentServerIDs)
+            self?.spotlightSyncTask = nil
+        }
+    }
+
+    /// The observer handed to the live client so links created, edited or
+    /// deleted through it reach Spotlight straight away. Each callback only
+    /// spawns a detached-from-the-result task: indexing can't fail the write.
+    private func spotlightObserver(for serverID: UUID) -> ShortURLMutationObserver? {
+        guard let spotlight else { return nil }
+        return ShortURLMutationObserver(
+            didSave: { link in
+                Task(priority: .utility) { await spotlight.upsert(link, serverID: serverID) }
+            },
+            didDelete: { shortCode, domain in
+                let linkID = ShortURL.identity(shortCode: shortCode, domain: domain)
+                Task(priority: .utility) { await spotlight.remove(linkID: linkID, serverID: serverID) }
+            }
+        )
     }
 
     // MARK: - Server management
@@ -135,6 +192,11 @@ public final class AppModel {
         if instance.id == activeInstance?.id {
             activate(instance, apiKey: apiKey)
         }
+        // URL or key may have changed: forget the last reindex so the next
+        // activation rebuilds this server's entries from scratch.
+        if let spotlight {
+            Task(priority: .utility) { await spotlight.invalidate(serverID: instance.id) }
+        }
     }
 
     /// Switches the active server and rebuilds the client for it.
@@ -154,6 +216,9 @@ public final class AppModel {
     public func removeInstance(_ id: UUID) {
         let wasActive = id == activeInstance?.id
         instanceStore.remove(id)
+        if let spotlight {
+            Task(priority: .utility) { await spotlight.removeServer(id) }
+        }
         guard wasActive else { return }
         if let instance = instanceStore.activeInstance,
            let key = instanceStore.apiKey(for: instance.id) {
