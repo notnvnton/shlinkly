@@ -127,9 +127,9 @@ public final class ShortURLDetailStore {
     private let client: ShlinkClient
     private let calendar: Calendar
 
-    /// Minimum number of trailing days the chart window spans. Keeps a brand-new
-    /// link's "All time" from degenerating to one or two cells — it draws a full
-    /// daily band axis like the 7-day view.
+    /// Minimum number of trailing days the chart window spans, whatever the
+    /// period. Keeps a brand-new link's chart from degenerating to one or two
+    /// cells — it always draws at least a full week of daily bars.
     private static let minimumWindowDays = 7
 
     // MARK: In-flight work
@@ -260,33 +260,32 @@ public final class ShortURLDetailStore {
     }
 
     /// The inclusive start-of-day window `[start, end]` that the chart spans and
-    /// the request is bounded to.
+    /// the request is bounded to. `end` is always today.
     ///
-    /// - 7/30 days: `start` is `dayCount - 1` days before today (so "7 days"
-    ///   covers today plus the six preceding days) — a *fixed* window anchored to
-    ///   today. It is kept full even for a link created today, so the chart always
-    ///   renders a full daily band axis (the empty leading days are zero-filled).
-    /// - All time: `start` is the creation day, but never narrower than
-    ///   ``minimumWindowDays`` — a link younger than that still draws a full week.
+    /// `start` is the later of two days:
+    /// - the period's own start — `dayCount - 1` days before today for 7/30 days
+    ///   (so "7 days" covers today plus the six preceding days), unbounded for
+    ///   all time;
+    /// - the link's creation day, but never later than six days ago, so the
+    ///   window is at least ``minimumWindowDays`` long and a brand-new link
+    ///   still draws a full week of bars instead of one or two cells.
     ///
-    /// The request start is only a lower bound — fetching from before the link
-    /// existed simply returns nothing — so the period totals still order
-    /// All ≥ 30 days ≥ 7 days.
+    /// In short: `max(periodStart, min(created, today - 6))`. A window never
+    /// reaches back before the link existed — a link made yesterday shows 7
+    /// days under "30 days", one made 12 days ago shows 12 — while an old link
+    /// gets the full fixed 7 or 30 days.
+    ///
+    /// The request start is only a lower bound — nothing predates the link — so
+    /// the period totals still order All ≥ 30 days ≥ 7 days.
     func window(for period: Period, now: Date) -> (start: Date, end: Date) {
         let end = calendar.startOfDay(for: now)
-        let start: Date
+        // The creation day, floored to a minimum span ending today.
+        let created = calendar.startOfDay(for: shortURL.dateCreated)
+        let floor = calendar.date(byAdding: .day, value: -(Self.minimumWindowDays - 1), to: end) ?? end
+        var start = min(created, floor)
         if let days = period.dayCount {
-            // Full fixed window, NOT clamped to the creation day: a young link's
-            // pre-existence days show as zero-height bars rather than shrinking the
-            // axis to a single day.
-            start = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
-        } else {
-            // All time runs from the creation day through today, but is floored to
-            // a minimum span ending today so a brand-new link still draws a full
-            // band axis rather than degenerating to one or two cells.
-            let created = calendar.startOfDay(for: shortURL.dateCreated)
-            let floor = calendar.date(byAdding: .day, value: -(Self.minimumWindowDays - 1), to: end) ?? end
-            start = min(created, floor)
+            let periodStart = calendar.date(byAdding: .day, value: -(days - 1), to: end) ?? end
+            start = max(periodStart, start)
         }
         // A creation date in the future (clock skew) must not invert the window.
         return (min(start, end), end)

@@ -56,7 +56,10 @@ struct VisitsBarChart: View {
     /// (7 days, a few weeks) a bar would otherwise swell to fill its whole slot.
     private static let maximumBarWidth: CGFloat = 24
     /// The share of its slot a bar fills when the slot is the limiting factor.
-    private static let barWidthRatio: CGFloat = 0.6
+    private static let barWidthRatio: CGFloat = 0.75
+    /// The least empty space left between two neighbouring bars, in points, so
+    /// dense charts (30 daily bars on an iPhone) don't fuse into one block.
+    private static let minimumBarGap: CGFloat = 2
 
     var body: some View {
         Chart {
@@ -73,25 +76,12 @@ struct VisitsBarChart: View {
                 .cornerRadius(min(5, (barWidth ?? 10) / 2))
             }
             if let selectedBucket {
+                // A faint guide behind the bars. The callout is *not* an annotation
+                // on this mark: an annotation is drawn at its mark's depth, so tall
+                // bars showed through it. It lives in the chart overlay instead.
                 RuleMark(x: .value("Selected", selectedBucket.start, unit: unit, calendar: calendar))
                     .foregroundStyle(Color.primary.opacity(0.12))
                     .zIndex(-1)
-                    // The callout lives *inside* the plot, pinned to its top edge:
-                    // floating above the plot it covered the card's title and step
-                    // picker. It sits beside the selected bar rather than on it —
-                    // to the right for bars in the left half, to the left otherwise
-                    // — so the bar it describes stays visible. `.fit` then keeps it
-                    // within the chart horizontally and the plot vertically.
-                    .annotation(
-                        position: .overlay,
-                        alignment: calloutOnTrailingSide(of: selectedBucket) ? .topLeading : .topTrailing,
-                        spacing: 0,
-                        overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .plot))
-                    ) {
-                        callout(for: selectedBucket)
-                            .padding(calloutOnTrailingSide(of: selectedBucket) ? .leading : .trailing,
-                                     (barWidth ?? 0) / 2 + 6)
-                    }
             }
         }
         // Continuous date domain — a Range, never an array. (Array/band and
@@ -141,20 +131,35 @@ struct VisitsBarChart: View {
                     plotWidth = width
                 }
         }
-        #if os(iOS)
-        // iOS selects by *tap*, not by `chartXSelection`: that one only shows the
-        // callout while a finger drags across the plot (a plain tap shows nothing)
-        // and its drag competes with the page's scroll. A tap gesture leaves
-        // vertical scrolling and the edge-swipe "back" entirely alone.
+        // The overlay sits above every mark, so the (opaque) callout placed in it
+        // is always drawn over the bars, dimmed or not.
         .chartOverlay { proxy in
             GeometryReader { geometry in
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture { location in
-                        handleTap(at: location, proxy: proxy, geometry: geometry)
+                ZStack(alignment: .topLeading) {
+                    #if os(iOS)
+                    // iOS selects by *tap*, not by `chartXSelection`: that one only
+                    // shows the callout while a finger drags across the plot (a plain
+                    // tap shows nothing) and its drag competes with the page's scroll.
+                    // A tap gesture leaves vertical scrolling and the edge-swipe
+                    // "back" entirely alone.
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { location in
+                            handleTap(at: location, proxy: proxy, geometry: geometry)
+                        }
+                    #endif
+                    if let selectedBucket,
+                       let placement = calloutPlacement(for: selectedBucket, proxy: proxy, geometry: geometry) {
+                        placement {
+                            callout(for: selectedBucket)
+                        }
+                        // Never in the way of a tap or the pointer.
+                        .allowsHitTesting(false)
                     }
+                }
             }
         }
+        #if os(iOS)
         .sensoryFeedback(trigger: selectedDate) { _, new in
             // A light tick when a column is picked; silence when it is cleared.
             new == nil ? nil : .selection
@@ -172,14 +177,16 @@ struct VisitsBarChart: View {
     /// The calendar unit one bar spans on the continuous axis.
     private var unit: Calendar.Component { grouping.calendarComponent }
 
-    /// The bar width in points: 60% of one column's slot, capped at
+    /// The bar width in points: ``barWidthRatio`` of one column's slot, leaving
+    /// at least ``minimumBarGap`` between neighbours and capped at
     /// ``maximumBarWidth``. The bar stays centred in its period — the `unit`
     /// binning positions it, this only narrows it. `nil` (Charts' own sizing)
     /// until the plot has been measured.
     private var barWidth: CGFloat? {
         guard plotWidth > 0, !data.isEmpty else { return nil }
         let slot = plotWidth / CGFloat(data.count)
-        return max(1, min(slot * Self.barWidthRatio, Self.maximumBarWidth))
+        let width = min(slot * Self.barWidthRatio, slot - Self.minimumBarGap, Self.maximumBarWidth)
+        return max(1, width)
     }
 
     #if os(iOS)
@@ -207,6 +214,27 @@ struct VisitsBarChart: View {
     }
 
     // MARK: - Callout
+
+    /// Where the callout goes for `bucket`: inside the plot, pinned to its top
+    /// edge (above the plot it covered the card's title and step picker), and
+    /// beside the bar rather than on it, so the bar it describes stays visible.
+    /// `nil` until the chart has laid out.
+    private func calloutPlacement(
+        for bucket: VisitBucket,
+        proxy: ChartProxy,
+        geometry: GeometryProxy
+    ) -> CalloutPlacement? {
+        guard let plotAnchor = proxy.plotFrame,
+              let startX = proxy.position(forX: bucket.start),
+              let endX = proxy.position(forX: bucket.end) else { return nil }
+        let plot = geometry[plotAnchor]
+        return CalloutPlacement(
+            barCenterX: plot.minX + (startX + endX) / 2,
+            top: plot.minY,
+            gap: (barWidth ?? 0) / 2 + 6,
+            onTrailingSide: calloutOnTrailingSide(of: bucket)
+        )
+    }
 
     /// Whether the callout goes to the right of `bucket`'s bar: yes for the bars
     /// in the left half of the chart, where there is room on that side.
@@ -321,5 +349,37 @@ struct VisitsBarChart: View {
             index -= step
         }
         return picked.reversed()
+    }
+}
+
+/// Places the callout in the chart overlay: its top at the plot's top edge, and
+/// horizontally beside the selected bar — `gap` to the right of the bar's centre
+/// or `gap` to its left — then slid back inside the chart if it would poke past
+/// either edge. A layout rather than an offset because the clamp needs the
+/// callout's own measured width.
+private struct CalloutPlacement: Layout {
+    /// The selected bar's centre, in the overlay's coordinates.
+    let barCenterX: CGFloat
+    /// The plot area's top edge, in the overlay's coordinates.
+    let top: CGFloat
+    /// Distance from the bar's centre to the callout's near edge.
+    let gap: CGFloat
+    /// `true` to sit to the right of the bar, `false` to its left.
+    let onTrailingSide: Bool
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let callout = subviews.first else { return }
+        let size = callout.sizeThatFits(.unspecified)
+        let preferred = onTrailingSide ? barCenterX + gap : barCenterX - gap - size.width
+        let x = min(max(preferred, 0), max(0, bounds.width - size.width))
+        callout.place(
+            at: CGPoint(x: bounds.minX + x, y: bounds.minY + top),
+            anchor: .topLeading,
+            proposal: ProposedViewSize(size)
+        )
     }
 }
