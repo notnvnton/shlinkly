@@ -40,19 +40,29 @@ struct VisitsBarChart: View {
 
     /// The date under the pointer / finger, straight from `chartXSelection`.
     @State private var selectedDate: Date?
+    /// The plot area's current width, measured through the chart's proxy so the
+    /// bars can be sized in points. Zero until the first layout pass.
+    @State private var plotWidth: CGFloat = 0
+
+    /// The widest a bar may get, in points. With only a handful of columns
+    /// (7 days, a few weeks) a bar would otherwise swell to fill its whole slot.
+    private static let maximumBarWidth: CGFloat = 24
+    /// The share of its slot a bar fills when the slot is the limiting factor.
+    private static let barWidthRatio: CGFloat = 0.6
 
     var body: some View {
         Chart {
             ForEach(data) { bucket in
                 BarMark(
                     x: .value("Date", bucket.start, unit: unit, calendar: calendar),
-                    y: .value("Visits", bucket.count)
+                    y: .value("Visits", bucket.count),
+                    width: barWidth.map { .fixed($0) } ?? .automatic
                 )
                 .foregroundStyle(Color.accentColor)
                 // With a bar selected, the others recede.
                 .opacity(selectedBucket == nil || selectedBucket?.id == bucket.id ? 1 : 0.35)
                 // Round the top of each bar for a softer, less "spreadsheet" look.
-                .cornerRadius(5)
+                .cornerRadius(min(5, (barWidth ?? 10) / 2))
             }
             if let selectedBucket {
                 RuleMark(x: .value("Selected", selectedBucket.start, unit: unit, calendar: calendar))
@@ -106,6 +116,14 @@ struct VisitsBarChart: View {
                 }
             }
         }
+        // Track the plot area's real width (it changes with the window on the
+        // Mac and with rotation on iOS) so `barWidth` follows it.
+        .chartBackground { proxy in
+            Color.clear
+                .onChange(of: proxy.plotSize.width, initial: true) { _, width in
+                    plotWidth = width
+                }
+        }
         .chartXSelection(value: $selectedDate)
         .onChange(of: period) { _, _ in selectedDate = nil }
         .onChange(of: grouping) { _, _ in selectedDate = nil }
@@ -115,6 +133,16 @@ struct VisitsBarChart: View {
 
     /// The calendar unit one bar spans on the continuous axis.
     private var unit: Calendar.Component { grouping.calendarComponent }
+
+    /// The bar width in points: 60% of one column's slot, capped at
+    /// ``maximumBarWidth``. The bar stays centred in its period — the `unit`
+    /// binning positions it, this only narrows it. `nil` (Charts' own sizing)
+    /// until the plot has been measured.
+    private var barWidth: CGFloat? {
+        guard plotWidth > 0, !data.isEmpty else { return nil }
+        let slot = plotWidth / CGFloat(data.count)
+        return max(1, min(slot * Self.barWidthRatio, Self.maximumBarWidth))
+    }
 
     /// The column under the pointer / finger, if any.
     private var selectedBucket: VisitBucket? {
@@ -133,7 +161,7 @@ struct VisitsBarChart: View {
             Text(periodTitle(for: bucket))
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(bucket.count == 1 ? "1 visit" : "\(bucket.count.formatted()) visits")
+            Text(countTitle(for: bucket.count))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
         }
@@ -143,6 +171,15 @@ struct VisitsBarChart: View {
         .background(.regularMaterial, in: shape)
         .overlay(shape.strokeBorder(.separator))
         .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+    }
+
+    /// The selected column's count in words.
+    private func countTitle(for count: Int) -> String {
+        switch count {
+        case 0: return "No visits"
+        case 1: return "1 visit"
+        default: return "\(count.formatted()) visits"
+        }
     }
 
     /// The selected column's period in words: "15 Jun", "Week of 15 Jun",
