@@ -73,15 +73,21 @@ struct VisitsBarChart: View {
                 RuleMark(x: .value("Selected", selectedBucket.start, unit: unit, calendar: calendar))
                     .foregroundStyle(Color.primary.opacity(0.12))
                     .zIndex(-1)
-                    // `.fit(to: .chart)` slides the callout sideways so it never
-                    // pokes past the chart's left/right edge; vertically it is
-                    // left alone and floats above the plot.
+                    // The callout lives *inside* the plot, pinned to its top edge:
+                    // floating above the plot it covered the card's title and step
+                    // picker. It sits beside the selected bar rather than on it —
+                    // to the right for bars in the left half, to the left otherwise
+                    // — so the bar it describes stays visible. `.fit` then keeps it
+                    // within the chart horizontally and the plot vertically.
                     .annotation(
-                        position: .top,
+                        position: .overlay,
+                        alignment: calloutOnTrailingSide(of: selectedBucket) ? .topLeading : .topTrailing,
                         spacing: 0,
-                        overflowResolution: .init(x: .fit(to: .chart), y: .disabled)
+                        overflowResolution: .init(x: .fit(to: .chart), y: .fit(to: .plot))
                     ) {
                         callout(for: selectedBucket)
+                            .padding(calloutOnTrailingSide(of: selectedBucket) ? .leading : .trailing,
+                                     (barWidth ?? 0) / 2 + 6)
                     }
             }
         }
@@ -198,9 +204,27 @@ struct VisitsBarChart: View {
 
     // MARK: - Callout
 
-    /// The floating card over the selected bar: its period and its exact count.
-    /// Borrows the toast pill's surface (material, hairline border, soft shadow)
-    /// on a rounded rectangle, since it stacks two lines.
+    /// Whether the callout goes to the right of `bucket`'s bar: yes for the bars
+    /// in the left half of the chart, where there is room on that side.
+    private func calloutOnTrailingSide(of bucket: VisitBucket) -> Bool {
+        guard let index = data.firstIndex(where: { $0.id == bucket.id }) else { return true }
+        return index * 2 < data.count
+    }
+
+    /// An opaque system surface that follows light / dark on its own. Not a
+    /// material: inside a chart annotation a material has nothing to blur and
+    /// came out near-black in light mode on iPhone, hiding the text.
+    private var calloutBackground: Color {
+        #if os(iOS)
+        Color(uiColor: .secondarySystemGroupedBackground)
+        #else
+        Color(nsColor: .controlBackgroundColor)
+        #endif
+    }
+
+    /// The floating card beside the selected bar: its period and its exact
+    /// count. Borrows the toast pill's hairline border and soft shadow on a
+    /// rounded rectangle, since it stacks several lines.
     private func callout(for bucket: VisitBucket) -> some View {
         let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
         return VStack(spacing: 1) {
@@ -219,7 +243,7 @@ struct VisitsBarChart: View {
         .fixedSize()
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: shape)
+        .background(calloutBackground, in: shape)
         .overlay(shape.strokeBorder(.separator))
         .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
     }

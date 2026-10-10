@@ -459,18 +459,21 @@ public final class ShortURLDetailStore {
         a.count != b.count ? a.count > b.count : a.label < b.label
     }
 
-    /// Rounds `value` up to a "nice" axis maximum (1, 2 or 5 × 10ⁿ); never
-    /// below 1 so the domain is always non-degenerate.
-    static func niceCeiling(_ value: Int) -> Int {
+    /// Rounds `value` up to the nearest "nice" axis maximum that is not below
+    /// it: 1, 1.5, 2, 2.5, 3, 4, 5, 6, 8 or 10 × 10ⁿ (21 → 25, 9 → 10,
+    /// 130 → 150). The steps are dense on purpose — a coarse 1-2-5 ladder left
+    /// the tallest bar at half height (21 → 50). Below ten only whole numbers
+    /// are used, and the result is never below 1 so the domain is always
+    /// non-degenerate.
+    nonisolated static func niceCeiling(_ value: Int) -> Int {
         guard value > 1 else { return 1 }
-        let v = Double(value)
-        let magnitude = pow(10, floor(log10(v)))
-        let normalized = v / magnitude
-        let nice: Double
-        if normalized <= 1 { nice = 1 }
-        else if normalized <= 2 { nice = 2 }
-        else if normalized <= 5 { nice = 5 }
-        else { nice = 10 }
-        return Int((nice * magnitude).rounded())
+        // The power of ten at or below `value`.
+        var magnitude = 1
+        while magnitude <= value / 10 { magnitude *= 10 }
+        // Tenths of the magnitude, so 1.5 and 2.5 stay in integer math.
+        let steps = magnitude >= 10
+            ? [10, 15, 20, 25, 30, 40, 50, 60, 80, 100].map { $0 * (magnitude / 10) }
+            : [1, 2, 3, 4, 5, 6, 8, 10]
+        return steps.first { $0 >= value } ?? magnitude * 10
     }
 }
