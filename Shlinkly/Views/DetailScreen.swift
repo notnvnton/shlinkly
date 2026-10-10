@@ -323,6 +323,7 @@ struct DetailScreen: View {
             }
         case .loaded:
             VisitsBarChart(data: store.chartBuckets,
+                           breakdowns: store.chartBreakdowns,
                            grouping: store.chartGrouping,
                            calendar: store.chartCalendar,
                            yMax: store.chartYDomainMax,

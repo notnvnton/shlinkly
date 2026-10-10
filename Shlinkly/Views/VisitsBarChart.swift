@@ -20,6 +20,9 @@ import ShlinklyCore
 /// with its exact period and count above it.
 struct VisitsBarChart: View {
     let data: [VisitBucket]
+    /// The people / bots split of the same columns, for the callout. Always
+    /// carries both halves, whatever the bot toggle says.
+    let breakdowns: [VisitBucketBreakdown]
     /// The step each bar spans; picks the bar width, the axis label format and
     /// the callout's wording.
     let grouping: VisitGrouping
@@ -38,7 +41,9 @@ struct VisitsBarChart: View {
     let period: ShortURLDetailStore.Period
     let excludeBots: Bool
 
-    /// The date under the pointer / finger, straight from `chartXSelection`.
+    /// A date inside the selected column. macOS: the date under the pointer,
+    /// straight from `chartXSelection`. iOS: the start of the tapped column,
+    /// which stays selected until it is tapped again or the tap lands elsewhere.
     @State private var selectedDate: Date?
     /// The plot area's current width, measured through the chart's proxy so the
     /// bars can be sized in points. Zero until the first layout pass.
@@ -108,7 +113,10 @@ struct VisitsBarChart: View {
                     .foregroundStyle(Color.primary.opacity(0.08))
                 AxisTick()
                     .foregroundStyle(Color.primary.opacity(0.15))
-                AxisValueLabel {
+                // An explicit, standard anchor: the label hangs below its tick and
+                // starts at it — where Charts puts it by default — without leaving
+                // Charts to derive a custom `UnitPoint` (which it warns about).
+                AxisValueLabel(anchor: .topLeading) {
                     if let date = value.as(Date.self) {
                         Text(date, format: axisLabelFormat)
                             .fixedSize()
@@ -124,7 +132,27 @@ struct VisitsBarChart: View {
                     plotWidth = width
                 }
         }
+        #if os(iOS)
+        // iOS selects by *tap*, not by `chartXSelection`: that one only shows the
+        // callout while a finger drags across the plot (a plain tap shows nothing)
+        // and its drag competes with the page's scroll. A tap gesture leaves
+        // vertical scrolling and the edge-swipe "back" entirely alone.
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { location in
+                        handleTap(at: location, proxy: proxy, geometry: geometry)
+                    }
+            }
+        }
+        .sensoryFeedback(trigger: selectedDate) { _, new in
+            // A light tick when a column is picked; silence when it is cleared.
+            new == nil ? nil : .selection
+        }
+        #else
         .chartXSelection(value: $selectedDate)
+        #endif
         .onChange(of: period) { _, _ in selectedDate = nil }
         .onChange(of: grouping) { _, _ in selectedDate = nil }
         .onChange(of: excludeBots) { _, _ in selectedDate = nil }
@@ -143,6 +171,24 @@ struct VisitsBarChart: View {
         let slot = plotWidth / CGFloat(data.count)
         return max(1, min(slot * Self.barWidthRatio, Self.maximumBarWidth))
     }
+
+    #if os(iOS)
+    /// Resolves a tap to the column whose period it falls in. Tapping a column
+    /// selects it, tapping the selected one clears it, tapping another moves the
+    /// selection, and a tap outside the plot (axis labels, margins) clears it.
+    private func handleTap(at location: CGPoint, proxy: ChartProxy, geometry: GeometryProxy) {
+        guard let plotAnchor = proxy.plotFrame else { return }
+        let plot = geometry[plotAnchor]
+        guard plot.contains(location),
+              let date = proxy.value(atX: location.x - plot.minX, as: Date.self),
+              let tapped = data.first(where: { $0.contains(date) }),
+              tapped.id != selectedBucket?.id else {
+            selectedDate = nil
+            return
+        }
+        selectedDate = tapped.start
+    }
+    #endif
 
     /// The column under the pointer / finger, if any.
     private var selectedBucket: VisitBucket? {
@@ -164,6 +210,11 @@ struct VisitsBarChart: View {
             Text(countTitle(for: bucket.count))
                 .font(.subheadline.weight(.semibold))
                 .foregroundStyle(.primary)
+            if let detail = breakdownTitle(for: bucket) {
+                Text(detail)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .fixedSize()
         .padding(.horizontal, 10)
@@ -173,13 +224,28 @@ struct VisitsBarChart: View {
         .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
     }
 
-    /// The selected column's count in words.
+    /// The selected column's headline count. With bots excluded the bars count
+    /// people, so the headline says so; otherwise it counts visits.
     private func countTitle(for count: Int) -> String {
-        switch count {
-        case 0: return "No visits"
-        case 1: return "1 visit"
-        default: return "\(count.formatted()) visits"
-        }
+        if count == 0 { return "No visits" }
+        return excludeBots ? peopleTitle(count) : (count == 1 ? "1 visit" : "\(count.formatted()) visits")
+    }
+
+    /// The people / bots line under the headline: "12 people · 9 bots", or just
+    /// the half that isn't zero. `nil` — no third line — when bots are excluded
+    /// (the headline already is the people count) or the column is empty.
+    private func breakdownTitle(for bucket: VisitBucket) -> String? {
+        guard !excludeBots,
+              let breakdown = breakdowns.first(where: { $0.start == bucket.start }),
+              breakdown.total > 0 else { return nil }
+        if breakdown.bots == 0 { return peopleTitle(breakdown.people) }
+        let bots = breakdown.bots == 1 ? "1 bot" : "\(breakdown.bots.formatted()) bots"
+        if breakdown.people == 0 { return bots }
+        return "\(peopleTitle(breakdown.people)) · \(bots)"
+    }
+
+    private func peopleTitle(_ count: Int) -> String {
+        count == 1 ? "1 person" : "\(count.formatted()) people"
     }
 
     /// The selected column's period in words: "15 Jun", "Week of 15 Jun",
