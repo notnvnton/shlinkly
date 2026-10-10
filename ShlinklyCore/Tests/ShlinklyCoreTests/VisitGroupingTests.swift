@@ -114,13 +114,20 @@ struct VisitGroupingTests {
                 == [.day])
     }
 
-    @Test("Steps finer than the automatic one are never offered")
-    func availableNeverFinerThanAutomatic() {
+    @Test("Month stays on offer when the automatic step is year; nothing finer does")
+    func monthOfferedBesideAutomaticYear() {
+        // Almost seven years: 82 months, far past the 31-column limit.
         let start = day(2020, 1, 1)
         let end = day(2026, 10, 17)
-        let auto = VisitGrouping.automatic(from: start, through: end, calendar: calendar)
-        #expect(auto == .year)
-        #expect(VisitGrouping.available(from: start, through: end, calendar: calendar) == [.year])
+        #expect(VisitGrouping.automatic(from: start, through: end, calendar: calendar) == .year)
+        #expect(VisitGrouping.available(from: start, through: end, calendar: calendar) == [.month, .year])
+        // Right at the boundary: 32 months tip the automatic step to year.
+        #expect(VisitGrouping.automatic(from: day(2020, 1, 1), through: day(2022, 8, 1), calendar: calendar) == .year)
+        #expect(VisitGrouping.available(from: day(2020, 1, 1), through: day(2022, 8, 1), calendar: calendar)
+                == [.month, .year])
+        // While the automatic step is still month, nothing finer is offered.
+        #expect(VisitGrouping.available(from: day(2020, 1, 1), through: day(2022, 7, 31), calendar: calendar)
+                == [.month])
     }
 
     @Test("A window shorter than two days is one daily column with no choice")

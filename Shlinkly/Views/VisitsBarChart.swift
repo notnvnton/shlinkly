@@ -40,6 +40,9 @@ struct VisitsBarChart: View {
     /// either (or to `grouping`) drops the current selection.
     let period: ShortURLDetailStore.Period
     let excludeBots: Bool
+    /// The page of a paged (month) chart on screen. Not drawn either — turning
+    /// the page drops the selection too.
+    let page: Int
 
     /// A date inside the selected column. macOS: the date under the pointer,
     /// straight from `chartXSelection`. iOS: the start of the tapped column,
@@ -162,6 +165,7 @@ struct VisitsBarChart: View {
         .onChange(of: period) { _, _ in selectedDate = nil }
         .onChange(of: grouping) { _, _ in selectedDate = nil }
         .onChange(of: excludeBots) { _, _ in selectedDate = nil }
+        .onChange(of: page) { _, _ in selectedDate = nil }
         .accessibilityLabel("Visits by \(grouping.noun)")
     }
 

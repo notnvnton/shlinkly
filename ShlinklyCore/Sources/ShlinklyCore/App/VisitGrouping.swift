@@ -91,12 +91,16 @@ public enum VisitGrouping: Int, CaseIterable, Comparable, Hashable, Sendable {
     /// The steps worth offering for the window `[start, end]`: the automatic
     /// one, plus every coarser step that still yields at least
     /// ``minimumCoarserColumns`` columns.
-    /// Finer steps are never offered — they are what the automatic step exists
-    /// to avoid.
+    /// Finer steps are not offered — they are what the automatic step exists to
+    /// avoid — with one exception: ``month`` stays on offer when the automatic
+    /// step is ``year``, because the chart pages through months a year at a time
+    /// (``VisitPaging``), which keeps them readable over any span.
     public static func available(from start: Date, through end: Date, calendar: Calendar) -> [VisitGrouping] {
         let auto = automatic(from: start, through: end, calendar: calendar)
         return allCases.filter { step in
-            step == auto || (step > auto && step.columnCount(from: start, through: end, calendar: calendar) >= minimumCoarserColumns)
+            step == auto
+                || (step > auto && step.columnCount(from: start, through: end, calendar: calendar) >= minimumCoarserColumns)
+                || (step == .month && auto == .year)
         }
     }
 
