@@ -42,6 +42,10 @@ public final class ShortURLListStore {
 
     /// Whether another page exists beyond what's loaded.
     public var hasMore: Bool { currentPage < totalPages }
+    /// Whether pages beyond the first are on screen. A ``refresh()`` re-fetches
+    /// page 1 only, so it would drop them (and the scroll position with them) —
+    /// callers refreshing on a mere hunch check this first.
+    public var hasLoadedBeyondFirstPage: Bool { currentPage > 1 }
 
     // MARK: Dependencies & config
 

@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import os
 import ShlinklyCore
 
 /// The read-only short-URL list: paginated rows with server-side search, sort
@@ -68,12 +69,30 @@ struct ShortURLListScreen: View {
     /// Drives the detail column of the split view. macOS selects on tap; iOS
     /// pushes via `NavigationLink` instead and has no selection binding.
     @Binding private var selection: Route?
+    /// How many times the detail has been closed on purpose upstream; see
+    /// ``restoreSelectionIfDropped(from:to:)``.
+    private let detailDismissCount: Int
+    /// True while a coordinated refresh is running, so a second one is queued
+    /// instead of racing it (the store itself doesn't serialize refreshes).
+    @State private var refreshInFlight = false
+    /// A refresh was asked for while one was running: run exactly one more when
+    /// it lands, however many requests piled up.
+    @State private var refreshQueued = false
+    /// The selection as it stood when the current refresh began, kept for a
+    /// moment after it lands — the window in which the `List` may drop a
+    /// selection whose row the refresh removed.
+    @State private var heldSelection: Route?
+    @State private var heldDismissCount = 0
+    @State private var releaseHeldSelectionTask: Task<Void, Never>?
 
-    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>, showSettings: Binding<Bool>) {
+    private static let refreshLog = Logger(subsystem: "de.ahodge.shlinkly", category: "ListRefresh")
+
+    init(store: ShortURLListStore, tagsStore: TagsStore, client: ShlinkClient, selection: Binding<Route?>, detailDismissCount: Int, showSettings: Binding<Bool>) {
         self.store = store
         self.tagsStore = tagsStore
         self.client = client
         _selection = selection
+        self.detailDismissCount = detailDismissCount
         _showSettings = showSettings
     }
     #else
@@ -138,7 +157,25 @@ struct ShortURLListScreen: View {
         } message: { message in
             Text(message)
         }
-        .onChange(of: scenePhase) { _, phase in
+        #if os(macOS)
+        // Links created without this screen's form (menu bar, Share Extension)
+        // and plain app activation, funnelled through ``AppModel``.
+        .onChange(of: appModel.externalLinksChange) { old, new in
+            // A creation anywhere among the signals since the last one seen
+            // forces the refresh; activation alone is only a hint.
+            let created = new.lastCreationSerial > old.serial
+            requestRefresh(trigger: created ? "a link was created outside the list" : "app became active",
+                           force: created)
+        }
+        .onChange(of: selection) { old, new in
+            restoreSelectionIfDropped(from: old, to: new)
+        }
+        #endif
+        .onChange(of: scenePhase) { old, phase in
+            #if os(macOS)
+            // Diagnostic: shows on-device whether `.active` ever arrives here.
+            Self.refreshLog.notice("ListRefresh: scenePhase (list) \(String(describing: old), privacy: .public) → \(String(describing: phase), privacy: .public)")
+            #endif
             guard phase == .active else { return }
             // Returning to the foreground (app re-activated on iOS / window became
             // active on macOS): re-query the current list so changes made elsewhere
@@ -147,7 +184,11 @@ struct ShortURLListScreen: View {
             // this never double-loads on launch. `refresh()` keeps the current rows
             // on screen and re-fetches the active page/search/sort.
             if didInitialLoad {
+                #if os(macOS)
+                requestRefresh(trigger: "scenePhase became active", force: false)
+                #else
                 Task { await store.refresh() }
+                #endif
             }
             // Also re-check the clipboard so the "+" menu reflects a URL copied
             // while the app was backgrounded/inactive.
@@ -176,6 +217,99 @@ struct ShortURLListScreen: View {
         }
         #endif
     }
+
+    #if os(macOS)
+    // MARK: - Coordinated refresh (macOS)
+
+    /// Asks for a background refresh. A forced one (a link really was created
+    /// elsewhere) always runs; an unforced one (the app merely became active)
+    /// is skipped while pages beyond the first are loaded, because a refresh
+    /// re-fetches page 1 only and would throw them — and the scroll position —
+    /// away on every return to the app.
+    private func requestRefresh(trigger: String, force: Bool) {
+        guard didInitialLoad else {
+            Self.refreshLog.notice("ListRefresh: \(trigger, privacy: .public) — skipped: initial load hasn't run yet")
+            return
+        }
+        if !force, store.hasLoadedBeyondFirstPage {
+            Self.refreshLog.notice("ListRefresh: \(trigger, privacy: .public) — skipped: paged")
+            return
+        }
+        Task { await coordinatedRefresh(trigger: trigger, force: force) }
+    }
+
+    /// Runs ``ShortURLListStore/refresh()`` one at a time. A request arriving
+    /// mid-refresh never starts a second one. A forced request queues a single
+    /// follow-up instead — the link it reports may have been created after the
+    /// running request left — so a burst of them collapses into one extra fetch.
+    /// An unforced one (activation, which usually arrives twice: from AppKit and
+    /// from `scenePhase`) carries no news of its own and is simply dropped.
+    private func coordinatedRefresh(trigger: String, force: Bool) async {
+        if refreshInFlight, !force {
+            Self.refreshLog.notice("ListRefresh: \(trigger, privacy: .public) — skipped: refresh already running")
+            return
+        }
+        if refreshInFlight {
+            refreshQueued = true
+            Self.refreshLog.notice("ListRefresh: \(trigger, privacy: .public) — refresh already running, queued one follow-up")
+            return
+        }
+        refreshInFlight = true
+        Self.refreshLog.notice("ListRefresh: \(trigger, privacy: .public) — refresh started")
+        repeat {
+            if refreshQueued {
+                Self.refreshLog.notice("ListRefresh: running the queued follow-up refresh")
+            }
+            refreshQueued = false
+            releaseHeldSelectionTask?.cancel()
+            heldSelection = selection
+            heldDismissCount = detailDismissCount
+            await store.refresh()
+            resyncSelectionAfterRefresh()
+        } while refreshQueued
+        refreshInFlight = false
+        Self.refreshLog.notice("ListRefresh: refresh finished — \(store.items.count, privacy: .public) row(s)")
+        // The `List` may report a dropped selection a beat after the rows change.
+        releaseHeldSelectionTask = Task {
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            heldSelection = nil
+        }
+    }
+
+    /// The link a route points at, by identity.
+    private func linkID(_ route: Route?) -> String? {
+        guard case .shortURLDetail(let shortURL)? = route else { return nil }
+        return shortURL.id
+    }
+
+    /// Rows are tagged with the whole link value, so a refreshed copy of the
+    /// selected link (a new visit count, say) no longer matches the selection
+    /// and its row would lose the highlight. Re-point the selection at the fresh
+    /// copy; the detail is keyed by identity, so it isn't rebuilt.
+    private func resyncSelectionAfterRefresh() {
+        guard case .shortURLDetail(let current)? = selection else { return }
+        if let fresh = store.items.first(where: { $0.id == current.id }) {
+            if fresh != current { selection = .shortURLDetail(fresh) }
+        } else {
+            Self.refreshLog.notice("ListRefresh: the open link is no longer on the first page — keeping its detail open")
+        }
+    }
+
+    /// Puts the selection back when the `List` cleared it because a refresh
+    /// took its row away: the detail the user has open stays open. Left alone
+    /// when the detail was closed on purpose (`detailDismissCount` moved), when
+    /// the row is still there (the user deselected it), or outside a refresh.
+    private func restoreSelectionIfDropped(from old: Route?, to new: Route?) {
+        guard new == nil,
+              let droppedID = linkID(old),
+              droppedID == linkID(heldSelection),
+              detailDismissCount == heldDismissCount,
+              !store.items.contains(where: { $0.id == droppedID }) else { return }
+        Self.refreshLog.notice("ListRefresh: the list dropped the selection after a refresh — restoring it")
+        selection = old
+    }
+    #endif
 
     /// Runs the delete and surfaces a message on the non-success outcomes; the
     /// store removes the row itself on success.
@@ -574,7 +708,7 @@ struct ShortURLListScreen: View {
             Button {
                 Task {
                     isRefreshing = true
-                    await store.refresh()
+                    await coordinatedRefresh(trigger: "toolbar button", force: true)
                     isRefreshing = false
                 }
             } label: {

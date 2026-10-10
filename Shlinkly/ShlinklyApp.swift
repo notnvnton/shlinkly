@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import os
 import ShlinklyCore
 
 @main
@@ -83,7 +84,13 @@ struct ShlinklyApp: App {
             // change notification — so re-read it whenever the app comes to the
             // foreground. A server added with iCloud sync on another device appears
             // here on this activation.
-            .onChange(of: scenePhase) { _, phase in
+            .onChange(of: scenePhase) { old, phase in
+                #if os(macOS)
+                // Diagnostic: shows on-device whether macOS reports `.active` at
+                // all when the hidden window comes back.
+                Logger(subsystem: "de.ahodge.shlinkly", category: "ListRefresh")
+                    .notice("ListRefresh: scenePhase (app) \(String(describing: old), privacy: .public) → \(String(describing: phase), privacy: .public)")
+                #endif
                 if phase == .active {
                     appModel.refreshFromStore()
                 }

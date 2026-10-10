@@ -367,6 +367,7 @@ final class MenuBarController: NSObject {
         case GenerationSignal.succeeded:
             log.info("share signal received: succeeded")
             playSuccessFlyAway()
+            appModel.noteLinksChangedExternally(source: .shareExtension)
         case GenerationSignal.failed:
             log.info("share signal received: failed")
             stopSpinSettleIdle()
@@ -418,6 +419,7 @@ final class MenuBarController: NSObject {
                 Clipboard.copy(shortURL.shortUrl)
                 status = .created(shortURL.shortUrl)
                 playSuccessFlyAway()
+                appModel.noteLinksChangedExternally(source: .menuBar)
                 log.info("generate from clipboard: success — \(shortURL.shortUrl, privacy: .public)")
                 MenuBarNotifier.notify(title: "Short link copied", body: shortURL.shortUrl)
             } catch {
