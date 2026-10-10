@@ -113,6 +113,9 @@ public final class ShortURLDetailStore {
     /// A chart step picked by hand, or `nil` to follow the automatic one. Never
     /// persisted: a fresh store and every period change start from automatic.
     private var manualGrouping: VisitGrouping?
+    /// The chart page picked with the arrows, or `nil` for the latest one. Like
+    /// the step it is never persisted, and a period or step change drops it.
+    private var manualChartPage: Int?
 
     /// Every visit loaded for the current period, bots included. The chart
     /// filters this locally for the bot toggle; the metric cards always use the
@@ -165,6 +168,7 @@ public final class ShortURLDetailStore {
         guard newPeriod != period else { return }
         period = newPeriod
         manualGrouping = nil
+        manualChartPage = nil
         load()
     }
 
@@ -172,6 +176,21 @@ public final class ShortURLDetailStore {
     /// effect; anything else falls back to the automatic step.
     public func setGrouping(_ grouping: VisitGrouping) {
         manualGrouping = grouping
+        manualChartPage = nil
+    }
+
+    /// Pages the chart back by ``VisitPaging/monthsPerPage`` months. No-op on
+    /// the earliest page or when the chart isn't paged.
+    public func showPreviousChartPage() {
+        guard canShowPreviousChartPage else { return }
+        manualChartPage = chartPage - 1
+    }
+
+    /// Pages the chart forward by ``VisitPaging/monthsPerPage`` months. No-op
+    /// on the latest page or when the chart isn't paged.
+    public func showNextChartPage() {
+        guard canShowNextChartPage else { return }
+        manualChartPage = chartPage + 1
     }
 
     /// Widens the window to all time. Backs the smart empty state's call to
@@ -186,6 +205,36 @@ public final class ShortURLDetailStore {
     public func apply(_ updated: ShortURL) {
         shortURL = updated
     }
+
+    // MARK: - Seeding (tests & previews)
+
+    /// Puts the store straight into the loaded state with `visits`, skipping
+    /// the network. For unit tests and SwiftUI previews only.
+    func seed(visits: [Visit], period: Period, grouping: VisitGrouping? = nil) {
+        loadTask?.cancel()
+        self.visits = visits
+        self.period = period
+        manualGrouping = grouping
+        manualChartPage = nil
+        state = visits.isEmpty ? .empty : .loaded
+    }
+
+    #if DEBUG
+    /// A store that is already loaded with made-up `visits`, for SwiftUI
+    /// previews: it never talks to a server (its client points nowhere).
+    public static func preview(
+        shortURL: ShortURL,
+        visits: [Visit],
+        period: Period = .allTime,
+        grouping: VisitGrouping? = nil,
+        calendar: Calendar = .current
+    ) -> ShortURLDetailStore {
+        let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
+        let store = ShortURLDetailStore(shortURL: shortURL, client: client, calendar: calendar)
+        store.seed(visits: visits, period: period, grouping: grouping)
+        return store
+    }
+    #endif
 
     // MARK: - Worker
 
@@ -300,10 +349,65 @@ public final class ShortURLDetailStore {
     /// bars on the very same day / week / month boundaries.
     public var chartCalendar: Calendar { calendar }
 
-    /// The chart's columns: ``dailyCounts`` summed into ``chartGrouping`` steps.
-    /// Honours the bot toggle; the columns' total equals the daily total.
+    /// The chart's visible columns: ``dailyCounts`` summed into
+    /// ``chartGrouping`` steps, cut down to the current page when the chart is
+    /// paged. Honours the bot toggle. Unpaged, the columns' total equals the
+    /// daily total.
     public var chartBuckets: [VisitBucket] {
-        chartGrouping.buckets(from: dailyCounts, calendar: calendar)
+        visiblePage(of: chartGrouping.buckets(from: dailyCounts, calendar: calendar))
+    }
+
+    // MARK: Chart paging (months, a year at a time)
+
+    /// How many columns the whole window holds at the current step.
+    private var chartColumnCount: Int {
+        let (start, end) = window(for: period, now: Date())
+        return chartGrouping.columnCount(from: start, through: end, calendar: calendar)
+    }
+
+    /// Whether the chart shows one page of the window at a time: only the month
+    /// step, and only when the window holds more than
+    /// ``VisitPaging/monthsPerPage`` months. Every other step draws whole.
+    public var isChartPaged: Bool {
+        chartGrouping == .month && VisitPaging.isPaged(columns: chartColumnCount)
+    }
+
+    /// The number of chart pages; `1` when the chart isn't paged.
+    public var chartPageCount: Int {
+        isChartPaged ? VisitPaging.pageCount(columns: chartColumnCount) : 1
+    }
+
+    /// The page on screen, from `0` (earliest, possibly short) to
+    /// `chartPageCount - 1` (latest, ending with the current month — the
+    /// default).
+    public var chartPage: Int {
+        let last = chartPageCount - 1
+        return min(max(manualChartPage ?? last, 0), last)
+    }
+
+    /// Whether an earlier page exists.
+    public var canShowPreviousChartPage: Bool { isChartPaged && chartPage > 0 }
+
+    /// Whether a later page exists.
+    public var canShowNextChartPage: Bool { isChartPaged && chartPage < chartPageCount - 1 }
+
+    /// Cuts the window's columns down to the current page; the identity when
+    /// the chart isn't paged.
+    private func visiblePage<Column>(of columns: [Column]) -> [Column] {
+        guard isChartPaged else { return columns }
+        return Array(columns[VisitPaging.columnRange(page: chartPage, columns: columns.count)])
+    }
+
+    /// The date span under the chart's title. Paged, it is the visible months
+    /// with their years ("Oct 2025 – Sep 2026"); otherwise the whole window, as
+    /// ``windowDateRange``.
+    public var chartDateRange: String {
+        guard isChartPaged, let first = chartBuckets.first, let last = chartBuckets.last else {
+            return windowDateRange
+        }
+        let style = Date.FormatStyle.dateTime.month(.abbreviated).year()
+        if first.start == last.start { return first.start.formatted(style) }
+        return "\(first.start.formatted(style)) – \(last.start.formatted(style))"
     }
 
     /// The window's date span formatted like the chart axis (e.g.
@@ -321,9 +425,9 @@ public final class ShortURLDetailStore {
     /// callout. Same columns as ``chartBuckets``, but independent of the bot
     /// toggle — it always knows both halves. Derived from the loaded visits.
     public var chartBreakdowns: [VisitBucketBreakdown] {
-        chartGrouping.breakdowns(all: dailyCounts(excludingBots: false),
-                                 people: dailyCounts(excludingBots: true),
-                                 calendar: calendar)
+        visiblePage(of: chartGrouping.breakdowns(all: dailyCounts(excludingBots: false),
+                                                 people: dailyCounts(excludingBots: true),
+                                                 calendar: calendar))
     }
 
     /// The chart's continuous X-axis domain: from the start of the column
@@ -334,6 +438,10 @@ public final class ShortURLDetailStore {
     /// hour scale. `window(for:now:)` already guarantees `start <= end`, so this
     /// range is never inverted.
     public var chartXDomain: ClosedRange<Date> {
+        // Paged: exactly the visible months, first column's start to last's end.
+        if isChartPaged, let first = chartBuckets.first, let last = chartBuckets.last {
+            return first.start...max(first.start, last.end)
+        }
         let (start, end) = window(for: period, now: Date())
         let grouping = chartGrouping
         let lower = grouping.interval(containing: start, calendar: calendar).start
@@ -368,7 +476,9 @@ public final class ShortURLDetailStore {
     ///
     /// Deliberately independent of the bot toggle so excluding bots only
     /// shortens the bars — the axis stays put. It *is* recomputed per period
-    /// and per step, since each has its own peak.
+    /// and per step, since each has its own peak. It is **not** recomputed per
+    /// page: a paged chart takes the peak of every column in the window, so the
+    /// bars of different years can be compared by height.
     public var chartYDomainMax: Int {
         let columns = chartGrouping.buckets(from: dailyCounts(excludingBots: false), calendar: calendar)
         let peak = columns.map(\.count).max() ?? 0

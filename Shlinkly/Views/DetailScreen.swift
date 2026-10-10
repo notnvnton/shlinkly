@@ -65,7 +65,7 @@ struct DetailScreen: View {
                     }
                 }
                 DetailCard { summarySection }
-                DetailCard { chartSection }
+                DetailCard { VisitsChartCard(store: store) }
                 breakdownSections
             }
             .padding()
@@ -219,45 +219,6 @@ struct DetailScreen: View {
         }
     }
 
-    // MARK: - Chart
-
-    private var chartSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(store.chartSubtitle)
-                        .font(.headline)
-                    Text(store.windowDateRange)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                groupingPicker
-            }
-            chartContent
-                .frame(maxWidth: .infinity)
-        }
-    }
-
-    /// The chart's step control (Day / Week / Month / Year). Only "All time"
-    /// offers a choice, and only when the window is long enough for a coarser
-    /// step to be worth drawing; otherwise there is nothing to pick and it stays
-    /// out of the header.
-    @ViewBuilder
-    private var groupingPicker: some View {
-        let groupings = store.availableGroupings
-        if store.state == .loaded, groupings.count > 1 {
-            Picker("Group by", selection: groupingBinding) {
-                ForEach(groupings, id: \.self) { grouping in
-                    Text(grouping.label).tag(grouping)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
-        }
-    }
-
     // MARK: - Breakdowns (countries + sources)
 
     /// The country and source breakdowns under the time chart. Shown only once
@@ -295,70 +256,6 @@ struct DetailScreen: View {
                       entries: store.sourceCounts)
     }
 
-    @ViewBuilder
-    private var chartContent: some View {
-        switch store.state {
-        case .loading:
-            ProgressView()
-                .frame(maxWidth: .infinity, minHeight: 220)
-        case .error(let message):
-            chartMessage(
-                systemImage: "exclamationmark.triangle",
-                title: "Couldn't load visits",
-                detail: message
-            ) {
-                Button("Try Again") { store.load() }
-                    .buttonStyle(.bordered)
-            }
-        case .empty:
-            chartMessage(
-                systemImage: "chart.bar",
-                title: emptyTitle,
-                detail: nil
-            ) {
-                if store.canSuggestAllTime {
-                    Button("See all time") { store.showAllTime() }
-                        .buttonStyle(.bordered)
-                }
-            }
-        case .loaded:
-            VisitsBarChart(data: store.chartBuckets,
-                           breakdowns: store.chartBreakdowns,
-                           grouping: store.chartGrouping,
-                           calendar: store.chartCalendar,
-                           yMax: store.chartYDomainMax,
-                           xDomain: store.chartXDomain,
-                           period: store.period,
-                           excludeBots: store.excludeBots)
-                .frame(height: 220)
-        }
-    }
-
-    @ViewBuilder
-    private func chartMessage<Action: View>(
-        systemImage: String,
-        title: String,
-        detail: String?,
-        @ViewBuilder action: () -> Action
-    ) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.largeTitle)
-                .foregroundStyle(.secondary)
-            Text(title)
-                .font(.headline)
-                .multilineTextAlignment(.center)
-            if let detail {
-                Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            action()
-        }
-        .frame(maxWidth: .infinity, minHeight: 220)
-    }
-
     // MARK: - Derived values
 
     private var destinationURL: URL? { URL(string: shortURL.longUrl) }
@@ -383,22 +280,10 @@ struct DetailScreen: View {
         return shortURL.shortCode
     }
 
-    private var emptyTitle: String {
-        switch store.period {
-        case .last7Days: return "No visits in the last 7 days"
-        case .last30Days: return "No visits in the last 30 days"
-        case .allTime: return "No visits yet"
-        }
-    }
-
     // MARK: - Bindings
 
     private var periodBinding: Binding<ShortURLDetailStore.Period> {
         Binding(get: { store.period }, set: { store.setPeriod($0) })
-    }
-
-    private var groupingBinding: Binding<VisitGrouping> {
-        Binding(get: { store.chartGrouping }, set: { store.setGrouping($0) })
     }
 
     private var excludeBotsBinding: Binding<Bool> {
