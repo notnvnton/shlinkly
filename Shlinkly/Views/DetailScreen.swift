@@ -240,8 +240,9 @@ struct DetailScreen: View {
     }
 
     /// The chart's step control (Day / Week / Month / Year). Only "All time"
-    /// offers a choice, and only when the window is long enough for two or more
-    /// steps; otherwise there is nothing to pick and it stays out of the header.
+    /// offers a choice, and only when the window is long enough for a coarser
+    /// step to be worth drawing; otherwise there is nothing to pick and it stays
+    /// out of the header.
     @ViewBuilder
     private var groupingPicker: some View {
         let groupings = store.availableGroupings

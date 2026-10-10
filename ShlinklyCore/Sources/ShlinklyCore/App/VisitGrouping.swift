@@ -16,6 +16,10 @@ public enum VisitGrouping: Int, CaseIterable, Comparable, Hashable, Sendable {
     /// The most columns a chart may draw before the next coarser step is picked.
     public static let maximumColumns = 31
 
+    /// The fewest columns a step coarser than the automatic one must draw to be
+    /// worth offering — two or three fat bars say nothing the finer step doesn't.
+    public static let minimumCoarserColumns = 4
+
     public static func < (lhs: VisitGrouping, rhs: VisitGrouping) -> Bool {
         lhs.rawValue < rhs.rawValue
     }
@@ -85,13 +89,14 @@ public enum VisitGrouping: Int, CaseIterable, Comparable, Hashable, Sendable {
     }
 
     /// The steps worth offering for the window `[start, end]`: the automatic
-    /// one, plus every coarser step that still yields at least two columns.
+    /// one, plus every coarser step that still yields at least
+    /// ``minimumCoarserColumns`` columns.
     /// Finer steps are never offered — they are what the automatic step exists
     /// to avoid.
     public static func available(from start: Date, through end: Date, calendar: Calendar) -> [VisitGrouping] {
         let auto = automatic(from: start, through: end, calendar: calendar)
         return allCases.filter { step in
-            step == auto || (step > auto && step.columnCount(from: start, through: end, calendar: calendar) >= 2)
+            step == auto || (step > auto && step.columnCount(from: start, through: end, calendar: calendar) >= minimumCoarserColumns)
         }
     }
 

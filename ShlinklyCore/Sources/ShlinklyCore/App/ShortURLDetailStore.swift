@@ -274,7 +274,8 @@ public final class ShortURLDetailStore {
     }
 
     /// The chart steps the user can choose between. "All time" offers the
-    /// automatic step and the coarser ones that still draw two or more columns;
+    /// automatic step and the coarser ones that still draw enough columns
+    /// (``VisitGrouping/minimumCoarserColumns``);
     /// the fixed 7- and 30-day periods are always per day.
     public var availableGroupings: [VisitGrouping] {
         guard period == .allTime else { return [.day] }

@@ -81,20 +81,37 @@ struct VisitGroupingTests {
 
     // MARK: - Available steps
 
-    @Test("Offers the automatic step and coarser ones with two or more columns")
+    @Test("Offers the automatic step and coarser ones with four or more columns")
     func availableSteps() {
-        // 15 Jun – 17 Oct 2026: 125 days, 19 weeks, 5 months, 1 year.
+        // About four months, 15 Jun – 17 Oct 2026: 125 days, 19 weeks, 5 months, 1 year.
         #expect(VisitGrouping.available(from: day(2026, 6, 15), through: day(2026, 10, 17), calendar: calendar)
                 == [.week, .month])
-        // Across a year boundary the year step becomes worth offering.
+        // Two calendar years are too few columns to offer the year step.
         #expect(VisitGrouping.available(from: day(2025, 11, 3), through: day(2026, 10, 17), calendar: calendar)
+                == [.month])
+        // 26 months across four calendar years: the year step earns its place.
+        #expect(VisitGrouping.available(from: day(2023, 12, 1), through: day(2026, 1, 15), calendar: calendar)
                 == [.month, .year])
-        // A week inside one calendar week and month: nothing coarser has two columns.
+        // Four weeks to the day: exactly four weekly columns, one month.
+        #expect(VisitGrouping.available(from: day(2026, 6, 1), through: day(2026, 6, 28), calendar: calendar)
+                == [.day, .week])
+        // Three weeks to the day: three weekly columns are one short.
+        #expect(VisitGrouping.available(from: day(2026, 6, 1), through: day(2026, 6, 21), calendar: calendar)
+                == [.day])
+    }
+
+    @Test("A 7-day window is per day only, wherever it falls")
+    func sevenDayWindowOffersNoChoice() {
+        // Inside one calendar week and month.
         #expect(VisitGrouping.available(from: day(2026, 6, 15), through: day(2026, 6, 21), calendar: calendar)
                 == [.day])
-        // The same length straddling a week and a month boundary offers both.
+        // Straddling a week and a month boundary: two weekly columns, still not offered.
+        #expect(VisitGrouping.week.columnCount(from: day(2026, 6, 27), through: day(2026, 7, 3), calendar: calendar) == 2)
         #expect(VisitGrouping.available(from: day(2026, 6, 27), through: day(2026, 7, 3), calendar: calendar)
-                == [.day, .week, .month])
+                == [.day])
+        // Straddling a year boundary too.
+        #expect(VisitGrouping.available(from: day(2025, 12, 29), through: day(2026, 1, 4), calendar: calendar)
+                == [.day])
     }
 
     @Test("Steps finer than the automatic one are never offered")
