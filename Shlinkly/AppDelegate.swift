@@ -59,6 +59,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         NSApp.setActivationPolicy(.regular)
     }
 
+    /// `NSApplication.didBecomeActiveNotification`: the app is frontmost again.
+    /// Links may have been created meanwhile without the list's form (Shortcuts,
+    /// Siri, another device), and SwiftUI's `scenePhase` doesn't reliably report
+    /// this for a window that is hidden rather than closed — so tell the list.
+    func applicationDidBecomeActive(_ notification: Notification) {
+        appModel?.noteLinksChangedExternally(source: .activation)
+    }
+
     // MARK: - Deep links
 
     /// AppKit delivers `shlinkly://` opens here. Park the parsed link on the shared

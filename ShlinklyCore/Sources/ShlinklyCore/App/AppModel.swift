@@ -48,6 +48,51 @@ public final class AppModel {
         }
     }
 
+    #if os(macOS)
+    /// Bumped whenever links may have changed behind the list's back, so the
+    /// list screen can re-query. On macOS the app stays resident with its window
+    /// merely hidden, and links are created without the list's own form — from
+    /// the menu bar, the Share Extension, Shortcuts or Siri.
+    public private(set) var externalLinksChange = ExternalLinksChange()
+
+    /// A running tally of "links may have changed outside the list" signals.
+    /// Two serials rather than one counter-plus-reason, because observers see
+    /// only the latest value: several signals landing in one runloop turn must
+    /// not let a plain activation hide a real creation.
+    public struct ExternalLinksChange: Equatable, Sendable {
+        /// Bumped on every signal.
+        public fileprivate(set) var serial = 0
+        /// The ``serial`` of the latest signal that reported an actual creation
+        /// (as opposed to the app merely becoming active).
+        public fileprivate(set) var lastCreationSerial = 0
+
+        /// What raised a signal.
+        public enum Source: String, Sendable {
+            /// The menu bar's "Generate from clipboard" created a link.
+            case menuBar = "menu bar created a link"
+            /// The Share Extension reported a created link.
+            case shareExtension = "share extension created a link"
+            /// The app became active — anything may have happened meanwhile
+            /// (Shortcuts, Siri, another device, the web UI).
+            case activation = "app became active"
+
+            /// Whether the signal reports a link that was actually created.
+            var isCreation: Bool { self != .activation }
+        }
+    }
+
+    private static let listRefreshLog = Logger(subsystem: "de.ahodge.shlinkly", category: "ListRefresh")
+
+    /// Raises the "links may have changed outside the list" signal.
+    public func noteLinksChangedExternally(source: ExternalLinksChange.Source) {
+        externalLinksChange.serial += 1
+        if source.isCreation {
+            externalLinksChange.lastCreationSerial = externalLinksChange.serial
+        }
+        Self.listRefreshLog.notice("ListRefresh: signal #\(self.externalLinksChange.serial, privacy: .public) — \(source.rawValue, privacy: .public)")
+    }
+    #endif
+
     /// Feedback for a tapped Spotlight result, awaiting display as a transient
     /// pill: the server was switched, or the link couldn't be opened. The view
     /// that shows it clears it. `nil` when there's nothing to say.

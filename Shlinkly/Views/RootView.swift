@@ -67,6 +67,10 @@ private struct ConfiguredRoot: View {
     /// Guards the one-time first-launch auto-selection so clearing the detail
     /// (after a delete or a tag filter) doesn't snap back to the first row.
     @State private var didAutoSelectFirst = false
+    /// Bumped each time the detail is closed on purpose (delete, tag filter,
+    /// create request), so the list can tell that apart from the `List` dropping
+    /// a selection whose row a refresh took away.
+    @State private var detailDismissCount = 0
     #else
     @State private var path: [Route] = []
     #endif
@@ -84,7 +88,7 @@ private struct ConfiguredRoot: View {
             TagSidebar(listStore: listStore, tagsStore: tagsStore)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
         } content: {
-            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, showSettings: $showSettings)
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, detailDismissCount: detailDismissCount, showSettings: $showSettings)
                 .navigationSplitViewColumnWidth(min: 320, ideal: 360)
         } detail: {
             if let selection {
@@ -152,6 +156,7 @@ private struct ConfiguredRoot: View {
     /// arriving while a detail is open lands in the same place the "+" would.
     private func navigateToRoot() {
         #if os(macOS)
+        detailDismissCount += 1
         selection = nil
         #else
         path.removeAll()
@@ -193,6 +198,7 @@ private struct ConfiguredRoot: View {
     private func applyTagFilter(_ tag: String) {
         listStore.setActiveTag(tag)
         #if os(macOS)
+        detailDismissCount += 1
         selection = nil
         #else
         path.removeAll()
@@ -203,6 +209,7 @@ private struct ConfiguredRoot: View {
     /// stack, macOS clears the detail selection so the placeholder shows.
     private func dismissDetail() {
         #if os(macOS)
+        detailDismissCount += 1
         selection = nil
         #else
         if !path.isEmpty { path.removeLast() }
