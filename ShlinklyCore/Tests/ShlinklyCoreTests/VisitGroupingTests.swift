@@ -151,6 +151,46 @@ struct VisitGroupingTests {
         }
     }
 
+    // MARK: - People / bots
+
+    @Test("People and bots add up to each column's total, for every step")
+    func breakdownsAddUpToTheTotal() {
+        let all = daily(from: day(2024, 11, 20), through: day(2026, 10, 17)) { ($0 * 7) % 13 }
+        // Each day keeps a varying share of its visits as people.
+        let people = all.enumerated().map { index, point in
+            DailyCount(day: point.day, count: point.count * (index % 4) / 4)
+        }
+        let grandTotal = all.reduce(0) { $0 + $1.count }
+        let peopleTotal = people.reduce(0) { $0 + $1.count }
+        #expect(peopleTotal > 0 && peopleTotal < grandTotal)
+
+        for step in VisitGrouping.allCases {
+            let totals = step.buckets(from: all, calendar: calendar)
+            let breakdowns = step.breakdowns(all: all, people: people, calendar: calendar)
+            #expect(breakdowns.map(\.start) == totals.map(\.start))
+            #expect(breakdowns.map(\.end) == totals.map(\.end))
+            for (breakdown, total) in zip(breakdowns, totals) {
+                #expect(breakdown.people + breakdown.bots == total.count)
+                #expect(breakdown.total == total.count)
+                #expect(breakdown.people >= 0 && breakdown.bots >= 0)
+            }
+            #expect(breakdowns.reduce(0) { $0 + $1.people } == peopleTotal)
+            #expect(breakdowns.reduce(0) { $0 + $1.bots } == grandTotal - peopleTotal)
+        }
+    }
+
+    @Test("A week's breakdown sums that week's days")
+    func weekBreakdown() {
+        // Mon 15 Jun – Sun 28 Jun 2026: 3 visits a day; one of them a bot in week one only.
+        let all = daily(from: day(2026, 6, 15), through: day(2026, 6, 28)) { _ in 3 }
+        let people = daily(from: day(2026, 6, 15), through: day(2026, 6, 28)) { $0 < 7 ? 2 : 3 }
+        let breakdowns = VisitGrouping.week.breakdowns(all: all, people: people, calendar: calendar)
+        #expect(breakdowns.map(\.people) == [14, 21])
+        #expect(breakdowns.map(\.bots) == [7, 0])
+        #expect(breakdowns.map(\.total) == [21, 21])
+        #expect(VisitGrouping.week.breakdowns(all: [], people: [], calendar: calendar).isEmpty)
+    }
+
     @Test("Day buckets mirror the daily counts")
     func dayBuckets() {
         let days = daily(from: day(2026, 6, 15), through: day(2026, 6, 18)) { $0 }

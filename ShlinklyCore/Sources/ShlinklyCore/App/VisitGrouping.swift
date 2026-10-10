@@ -116,6 +116,50 @@ public enum VisitGrouping: Int, CaseIterable, Comparable, Hashable, Sendable {
         }
         return result
     }
+
+    /// Splits each of this step's columns into people and bots, from the two
+    /// daily series the store already has: every visit, and the visits left once
+    /// bots are dropped. Both must cover the same days in ascending order. No
+    /// request is involved — the bots are simply the difference, so within every
+    /// column `people + bots` equals the column's total.
+    public func breakdowns(
+        all: [ShortURLDetailStore.DailyCount],
+        people: [ShortURLDetailStore.DailyCount],
+        calendar: Calendar
+    ) -> [VisitBucketBreakdown] {
+        let peopleByStart = Dictionary(
+            buckets(from: people, calendar: calendar).map { ($0.start, $0.count) },
+            uniquingKeysWith: +
+        )
+        return buckets(from: all, calendar: calendar).map { bucket in
+            // Never more people than visits, whatever the inputs.
+            let people = min(max(peopleByStart[bucket.start] ?? 0, 0), bucket.count)
+            return VisitBucketBreakdown(start: bucket.start, end: bucket.end,
+                                        people: people, bots: bucket.count - people)
+        }
+    }
+}
+
+/// One chart column's visits split into people and bots.
+public struct VisitBucketBreakdown: Identifiable, Equatable, Sendable {
+    /// Start of the column — matches ``VisitBucket/start`` for the same step.
+    public let start: Date
+    /// Exclusive end — the start of the next column.
+    public let end: Date
+    /// Visits not flagged as a potential bot.
+    public let people: Int
+    /// Visits flagged as a potential bot.
+    public let bots: Int
+    /// Every visit in the column.
+    public var total: Int { people + bots }
+    public var id: Date { start }
+
+    public init(start: Date, end: Date, people: Int, bots: Int) {
+        self.start = start
+        self.end = end
+        self.people = people
+        self.bots = bots
+    }
 }
 
 /// One column of the visits chart: a calendar-aligned span and its visits.

@@ -317,6 +317,15 @@ public final class ShortURLDetailStore {
         return "\(start.formatted(style)) – \(end.formatted(style))"
     }
 
+    /// The people / bots split of every chart column, for the selected bar's
+    /// callout. Same columns as ``chartBuckets``, but independent of the bot
+    /// toggle — it always knows both halves. Derived from the loaded visits.
+    public var chartBreakdowns: [VisitBucketBreakdown] {
+        chartGrouping.breakdowns(all: dailyCounts(excludingBots: false),
+                                 people: dailyCounts(excludingBots: true),
+                                 calendar: calendar)
+    }
+
     /// The chart's continuous X-axis domain: from the start of the column
     /// holding the window's first day through the end of the column holding
     /// today, so the (possibly partial) edge columns are drawn whole. Per day
