@@ -223,15 +223,37 @@ struct DetailScreen: View {
 
     private var chartSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(store.chartSubtitle)
-                    .font(.headline)
-                Text(store.windowDateRange)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(store.chartSubtitle)
+                        .font(.headline)
+                    Text(store.windowDateRange)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                groupingPicker
             }
             chartContent
                 .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The chart's step control (Day / Week / Month / Year). Only "All time"
+    /// offers a choice, and only when the window is long enough for two or more
+    /// steps; otherwise there is nothing to pick and it stays out of the header.
+    @ViewBuilder
+    private var groupingPicker: some View {
+        let groupings = store.availableGroupings
+        if store.state == .loaded, groupings.count > 1 {
+            Picker("Group by", selection: groupingBinding) {
+                ForEach(groupings, id: \.self) { grouping in
+                    Text(grouping.label).tag(grouping)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
         }
     }
 
@@ -299,7 +321,13 @@ struct DetailScreen: View {
                 }
             }
         case .loaded:
-            VisitsBarChart(data: store.dailyCounts, yMax: store.chartYDomainMax, xDomain: store.chartXDomain)
+            VisitsBarChart(data: store.chartBuckets,
+                           grouping: store.chartGrouping,
+                           calendar: store.chartCalendar,
+                           yMax: store.chartYDomainMax,
+                           xDomain: store.chartXDomain,
+                           period: store.period,
+                           excludeBots: store.excludeBots)
                 .frame(height: 220)
         }
     }
@@ -365,6 +393,10 @@ struct DetailScreen: View {
 
     private var periodBinding: Binding<ShortURLDetailStore.Period> {
         Binding(get: { store.period }, set: { store.setPeriod($0) })
+    }
+
+    private var groupingBinding: Binding<VisitGrouping> {
+        Binding(get: { store.chartGrouping }, set: { store.setGrouping($0) })
     }
 
     private var excludeBotsBinding: Binding<Bool> {

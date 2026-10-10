@@ -110,6 +110,9 @@ public final class ShortURLDetailStore {
     /// single switch. A purely local filter: it never triggers a request and
     /// never affects the metric cards.
     public var excludeBots: Bool = false
+    /// A chart step picked by hand, or `nil` to follow the automatic one. Never
+    /// persisted: a fresh store and every period change start from automatic.
+    private var manualGrouping: VisitGrouping?
 
     /// Every visit loaded for the current period, bots included. The chart
     /// filters this locally for the bot toggle; the metric cards always use the
@@ -161,7 +164,14 @@ public final class ShortURLDetailStore {
     public func setPeriod(_ newPeriod: Period) {
         guard newPeriod != period else { return }
         period = newPeriod
+        manualGrouping = nil
         load()
+    }
+
+    /// Picks the chart step by hand. Only steps in ``availableGroupings`` take
+    /// effect; anything else falls back to the automatic step.
+    public func setGrouping(_ grouping: VisitGrouping) {
+        manualGrouping = grouping
     }
 
     /// Widens the window to all time. Backs the smart empty state's call to
@@ -260,7 +270,39 @@ public final class ShortURLDetailStore {
 
     /// Subtitle for the chart, reflecting the bot toggle.
     public var chartSubtitle: String {
-        excludeBots ? "Visits by day · no bots" : "Visits by day · total"
+        "Visits by \(chartGrouping.noun) · \(excludeBots ? "no bots" : "total")"
+    }
+
+    /// The chart steps the user can choose between. "All time" offers the
+    /// automatic step and the coarser ones that still draw two or more columns;
+    /// the fixed 7- and 30-day periods are always per day.
+    public var availableGroupings: [VisitGrouping] {
+        guard period == .allTime else { return [.day] }
+        let (start, end) = window(for: period, now: Date())
+        return VisitGrouping.available(from: start, through: end, calendar: calendar)
+    }
+
+    /// The step the chart is drawn in: the hand-picked one while it is still on
+    /// offer, otherwise the automatic one (the finest step that fits the window
+    /// in ``VisitGrouping/maximumColumns`` columns).
+    public var chartGrouping: VisitGrouping {
+        guard period == .allTime else { return .day }
+        let (start, end) = window(for: period, now: Date())
+        if let manualGrouping,
+           VisitGrouping.available(from: start, through: end, calendar: calendar).contains(manualGrouping) {
+            return manualGrouping
+        }
+        return VisitGrouping.automatic(from: start, through: end, calendar: calendar)
+    }
+
+    /// The calendar the chart's columns are aligned to, so the view bins its
+    /// bars on the very same day / week / month boundaries.
+    public var chartCalendar: Calendar { calendar }
+
+    /// The chart's columns: ``dailyCounts`` summed into ``chartGrouping`` steps.
+    /// Honours the bot toggle; the columns' total equals the daily total.
+    public var chartBuckets: [VisitBucket] {
+        chartGrouping.buckets(from: dailyCounts, calendar: calendar)
     }
 
     /// The window's date span formatted like the chart axis (e.g.
@@ -274,15 +316,19 @@ public final class ShortURLDetailStore {
         return "\(start.formatted(style)) – \(end.formatted(style))"
     }
 
-    /// The chart's continuous X-axis domain: the current window's first day
-    /// through the day *after* today. Pinning the whole period stops a single
-    /// day's data from collapsing the axis to an hour scale; the one-day trailing
-    /// pad keeps the final (today) bar off the right edge. `window(for:now:)`
-    /// already guarantees `start <= end`, so this range is never inverted.
+    /// The chart's continuous X-axis domain: from the start of the column
+    /// holding the window's first day through the end of the column holding
+    /// today, so the (possibly partial) edge columns are drawn whole. Per day
+    /// that is the window's first day through the day *after* today. Pinning the
+    /// whole period stops a single day's data from collapsing the axis to an
+    /// hour scale. `window(for:now:)` already guarantees `start <= end`, so this
+    /// range is never inverted.
     public var chartXDomain: ClosedRange<Date> {
         let (start, end) = window(for: period, now: Date())
-        let trailing = calendar.date(byAdding: .day, value: 1, to: end) ?? end
-        return start...trailing
+        let grouping = chartGrouping
+        let lower = grouping.interval(containing: start, calendar: calendar).start
+        let upper = grouping.interval(containing: end, calendar: calendar).end
+        return lower...max(lower, upper)
     }
 
     /// Per-day visit counts across ``window(for:now:)``, with empty days
@@ -308,13 +354,14 @@ public final class ShortURLDetailStore {
     }
 
     /// Upper bound for the chart's Y axis: the "nice" rounded peak of the full
-    /// (bot-inclusive) daily counts for the current period.
+    /// (bot-inclusive) columns for the current period and step.
     ///
     /// Deliberately independent of the bot toggle so excluding bots only
-    /// shortens the bars — the axis stays put. It *is* recomputed per period,
-    /// since each period has its own peak.
+    /// shortens the bars — the axis stays put. It *is* recomputed per period
+    /// and per step, since each has its own peak.
     public var chartYDomainMax: Int {
-        let peak = dailyCounts(excludingBots: false).map(\.count).max() ?? 0
+        let columns = chartGrouping.buckets(from: dailyCounts(excludingBots: false), calendar: calendar)
+        let peak = columns.map(\.count).max() ?? 0
         return Self.niceCeiling(peak)
     }
 
