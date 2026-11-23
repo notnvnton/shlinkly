@@ -9,8 +9,8 @@ import AppKit
 
 /// One of the Mac window's drawn header rows (`MacMain`): the sidebar panel's
 /// 44 pt top row and the list and detail columns' 52 pt rows. The window has
-/// no system title or toolbar (`.hiddenTitleBar`, toolbar hidden), so these
-/// rows are the title bar:
+/// no system title (`.hiddenTitleBar`) and an empty toolbar with no items, so
+/// these rows are the title bar:
 ///
 /// - **On the traffic lights' line.** The window keeps an empty unified
 ///   toolbar (installed here, see ``TitleRowChromeView/installEmptyToolbar``),
@@ -151,6 +151,19 @@ final class TitleRowChromeView: NSView {
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
+        observe()
+    }
+
+    override func viewDidMoveToSuperview() {
+        super.viewDidMoveToSuperview()
+        observe()
+    }
+
+    /// Measures again whenever the window changes, and whenever any ancestor
+    /// view moves or resizes: hiding the sidebar moves the list column (an
+    /// ancestor), not this view's own frame, and the list header's toggle
+    /// must then move after the traffic lights.
+    private func observe() {
         observers.forEach(NotificationCenter.default.removeObserver)
         observers = []
         guard let window else { return }
@@ -164,6 +177,15 @@ final class TitleRowChromeView: NSView {
             NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
                 MainActor.assumeIsolated { self?.report() }
             }
+        }
+        var ancestor = superview
+        while let view = ancestor {
+            observers.append(NotificationCenter.default.addObserver(
+                forName: NSView.frameDidChangeNotification, object: view, queue: .main
+            ) { [weak self] _ in
+                MainActor.assumeIsolated { self?.report() }
+            })
+            ancestor = view.superview
         }
         report()
     }

@@ -80,17 +80,17 @@ struct ShortURLFormView: View {
                 MacCard(solid: true) {
                     VStack(spacing: 0) {
                         macField("Long URL") {
-                            TextField("Long URL", text: $model.longURL,
-                                      prompt: Text("https://example.com/page").foregroundStyle(Palette.text2))
+                            TextField("Long URL", text: $model.longURL, prompt: Text(""))
                                 .focused($focusedField, equals: .longURL)
                                 .multilineTextAlignment(.trailing)
+                                .macPlaceholder("https://example.com/page", isEmpty: model.longURL.isEmpty)
                         }
                         RowSeparator()
                         macField("Title") {
-                            TextField("Title", text: $model.title,
-                                      prompt: Text("Optional title").foregroundStyle(Palette.text2))
+                            TextField("Title", text: $model.title, prompt: Text(""))
                                 .focused($focusedField, equals: .title)
                                 .multilineTextAlignment(.trailing)
+                                .macPlaceholder("Optional title", isEmpty: model.title.isEmpty)
                         }
                         RowSeparator()
                         macField("Short code") {
@@ -129,10 +129,10 @@ struct ShortURLFormView: View {
                             .macField(height: 36)
                         RowSeparator()
                         macField("Visit limit", height: 36) {
-                            TextField("Visit limit", text: visitLimitText,
-                                      prompt: Text("e.g. 100").foregroundStyle(Palette.text2))
+                            TextField("Visit limit", text: visitLimitText, prompt: Text(""))
                                 .focused($focusedField, equals: .visitLimit)
                                 .multilineTextAlignment(.trailing)
+                                .macPlaceholder("e.g. 100", isEmpty: visitLimitText.wrappedValue.isEmpty)
                         }
                         RowSeparator()
                         SwitchRow(title: "Allow in robots.txt", isOn: $model.crawlable,

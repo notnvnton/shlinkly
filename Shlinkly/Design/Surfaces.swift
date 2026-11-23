@@ -163,6 +163,33 @@ struct FieldLabel: View {
 }
 
 #if os(macOS)
+extension View {
+    /// A `.mfield` value's placeholder, drawn where the typed text goes: at
+    /// the trailing edge, 13 pt, `--text2` (`.mfield input { text-align:
+    /// right }`), while `isEmpty`. Apply it to the field itself, with an empty
+    /// `prompt`, so it ends inside the field (before a "Show" button).
+    ///
+    /// Not the field's `prompt`: a styled prompt reaches AppKit as an
+    /// attributed placeholder with no paragraph style, which AppKit draws at
+    /// the leading edge whatever the field's alignment. A plain prompt follows
+    /// the alignment but takes the system placeholder color, not `--text2`.
+    /// Flush with the field's trailing edge, which is where AppKit ends
+    /// right-aligned typed text, while editing and at rest.
+    func macPlaceholder(_ text: String, isEmpty: Bool) -> some View {
+        overlay(alignment: .trailing) {
+            if isEmpty {
+                Text(text)
+                    .layoutFont(13)
+                    .foregroundStyle(Palette.text2)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+        }
+    }
+}
+
 /// `.sheet` with `.sheetbar` (Mac): a 15 pt semibold title, the content
 /// (fields in cards, 14 pt apart), and a bottom bar under a 1 pt `--sep`
 /// hairline. The content scrolls when it's taller than the sheet.

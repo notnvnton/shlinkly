@@ -122,11 +122,19 @@ struct DetailScreen: View {
     @ViewBuilder
     private var screen: some View {
         #if os(macOS)
-        VStack(spacing: 0) {
+        // The header row is the scroll view's top safe-area inset, not a row
+        // above it: a scroll view that touches the window's top safe area
+        // (52 pt, under the empty toolbar) is stretched up to the window's top
+        // edge, and its AppKit view would then lie over the row and take its
+        // clicks. As the inset, the row is above the scroll view and gets
+        // them. `.clipped()` keeps the scrolled content from showing behind
+        // the row.
+        ScrollView {
+            macColumn
+        }
+        .clipped()
+        .safeAreaInset(edge: .top, spacing: 0) {
             macHeaderRow
-            ScrollView {
-                macColumn
-            }
         }
         .ignoresSafeArea(.container, edges: .top)
         #else

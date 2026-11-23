@@ -26,13 +26,23 @@ struct SecretField<FocusValue: Hashable>: View {
     var toggleSize: CGFloat = 14
     @State private var isRevealed = false
 
+    /// The iPhone's prompt. The Mac draws its placeholder itself (trailing,
+    /// `--text2`), so the field's own prompt is empty there.
+    private var prompt: Text {
+        #if os(macOS)
+        Text("")
+        #else
+        Text(placeholder).foregroundStyle(Palette.text2)
+        #endif
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             Group {
                 if isRevealed {
-                    TextField("API key", text: $text, prompt: Text(placeholder).foregroundStyle(Palette.text2))
+                    TextField("API key", text: $text, prompt: prompt)
                 } else {
-                    SecureField("API key", text: $text, prompt: Text(placeholder).foregroundStyle(Palette.text2))
+                    SecureField("API key", text: $text, prompt: prompt)
                 }
             }
             .labelsHidden()
@@ -40,6 +50,11 @@ struct SecretField<FocusValue: Hashable>: View {
             .multilineTextAlignment(alignment)
             .foregroundStyle(Palette.text)
             .focused(focus, equals: focusValue)
+            #if os(macOS)
+            // On the field (masked or revealed), not the row, so it ends
+            // before "Show" (see ``SwiftUICore/View/macPlaceholder(_:isEmpty:)``).
+            .macPlaceholder(placeholder, isEmpty: text.isEmpty)
+            #endif
             #if os(iOS)
             .textInputAutocapitalization(.never)
             .autocorrectionDisabled()

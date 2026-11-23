@@ -294,19 +294,26 @@ private struct TagSidebar: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // The panel's 44 pt top row: the traffic lights (system) on the
-            // left, the toggle 10 pt from the panel's right edge.
-            MacTitleRow(height: 44) { _ in
-                HStack(spacing: 0) {
-                    Spacer(minLength: 0)
-                    SidebarToggleButton(isSidebarVisible: true, action: onToggleSidebar)
+        // The header row is the list's top safe-area inset, not a row above
+        // it: a scroll view that touches the window's top safe area (52 pt,
+        // under the empty toolbar) is stretched up to the window's top edge,
+        // and its AppKit view would then lie over the row and take its clicks.
+        // As the inset, the row is above the scroll view and gets them.
+        // `.clipped()` keeps the scrolled rows from showing behind the row.
+        tagList
+            .clipped()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // The panel's 44 pt top row: the traffic lights (system) on the
+                // left, the toggle 10 pt from the panel's right edge.
+                MacTitleRow(height: 44) { _ in
+                    HStack(spacing: 0) {
+                        Spacer(minLength: 0)
+                        SidebarToggleButton(isSidebarVisible: true, action: onToggleSidebar)
+                    }
+                    .padding(.trailing, 10)
                 }
-                .padding(.trailing, 10)
             }
-            tagList
-        }
-        .ignoresSafeArea(.container, edges: .top)
+            .ignoresSafeArea(.container, edges: .top)
         .sidebarBackground()
         .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
         .task { tagsStore.loadIfNeeded() }

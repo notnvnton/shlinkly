@@ -119,15 +119,15 @@ struct ServerFormView: View {
             MacCard(solid: true) {
                 VStack(spacing: 0) {
                     macField("Name") {
-                        TextField("Name", text: $model.name,
-                                  prompt: Text("My Shlink (optional)").foregroundStyle(Palette.text2))
+                        TextField("Name", text: $model.name, prompt: Text(""))
                             .focused($focusedField, equals: .name)
+                            .macPlaceholder("My Shlink (optional)", isEmpty: model.name.isEmpty)
                     }
                     RowSeparator()
                     macField("Server URL") {
-                        TextField("Server URL", text: $model.urlText,
-                                  prompt: Text("https://shlink.example.com").foregroundStyle(Palette.text2))
+                        TextField("Server URL", text: $model.urlText, prompt: Text(""))
                             .focused($focusedField, equals: .url)
+                            .macPlaceholder("https://shlink.example.com", isEmpty: model.urlText.isEmpty)
                     }
                     RowSeparator()
                     macField("API key") {
