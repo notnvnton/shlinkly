@@ -206,8 +206,9 @@ struct DetailScreen: View {
     }
 
     /// Copy (Mac) / Copy link (iPhone): copies the short URL (the same thing
-    /// every other copy path copies) and reads "Copied" for ~1.2s. The button
-    /// keeps its size, so nothing around it moves.
+    /// every other copy path copies) and reads "Copied" for 1.5 s. The button
+    /// keeps its size (the Mac's `.mbtn` is at least 76 pt, the iPhone's is
+    /// full width), so nothing around it moves.
     private func copyShortURL() {
         LinkActions.copyShortURL(shortURL)
         #if os(iOS)
@@ -216,7 +217,7 @@ struct DetailScreen: View {
         didCopy = true
         copyResetTask?.cancel()
         copyResetTask = Task {
-            try? await Task.sleep(for: .seconds(1.2))
+            try? await Task.sleep(for: .seconds(1.5))
             guard !Task.isCancelled else { return }
             didCopy = false
         }

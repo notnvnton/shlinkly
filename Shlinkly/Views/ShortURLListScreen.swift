@@ -51,6 +51,15 @@ struct ShortURLListScreen: View {
     /// `false` only in previews, whose store is seeded and must not hit a
     /// server.
     private var loadsOnAppear = true
+    #if os(macOS)
+    /// Shows the sidebar again: set while the sidebar is hidden, so its toggle
+    /// sits at the start of the list header (see ``showingSidebarToggle(_:)``).
+    private var showSidebar: (() -> Void)?
+    #else
+    /// Whether the search card's field has focus; choosing a tag suggestion
+    /// clears it, closing the keyboard.
+    @FocusState private var isSearchFocused: Bool
+    #endif
 
     #if os(iOS)
     /// Bumped on each copy to fire a light haptic via `.sensoryFeedback`.
@@ -505,6 +514,9 @@ struct ShortURLListScreen: View {
         #if os(macOS)
         VStack(spacing: 0) {
             macSearchField
+            if let tag = store.activeTag {
+                macFilterPill(tag)
+            }
             macContent
         }
         #else
@@ -539,6 +551,18 @@ struct ShortURLListScreen: View {
         .frame(height: 28)
         .background(Palette.segTrack, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
         .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
+
+    /// The active tag filter: a `.tag` "tag ×" 8 pt under the search field,
+    /// lined up with the rows' text (18 pt in). × clears the filter.
+    private func macFilterPill(_ tag: String) -> some View {
+        HStack(spacing: 0) {
+            TagView(text: tag, onRemove: { store.setActiveTag(nil) })
+                .accessibilityLabel("Filtered by tag \(tag)")
+            Spacer(minLength: 0)
+        }
+        .padding(.leading, 18)
         .padding(.bottom, 8)
     }
 
@@ -690,6 +714,10 @@ struct ShortURLListScreen: View {
                 .pageRow(top: 6)
 
             phoneSearchField
+                .tagSearchSuggestions(tagSuggestions) { tag in
+                    store.applyTagFromSearch(tag)
+                    isSearchFocused = false
+                }
                 .pageRow(top: 14)
 
             if !tagsStore.tags.isEmpty {
@@ -786,6 +814,7 @@ struct ShortURLListScreen: View {
                 TextField("Search links", text: searchBinding, prompt: Text("Search links").foregroundStyle(Palette.text2))
                     .layoutFont(16)
                     .foregroundStyle(Palette.text)
+                    .focused($isSearchFocused)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .submitLabel(.search)
@@ -885,6 +914,32 @@ struct ShortURLListScreen: View {
         guard let active = appModel.activeInstance else { return "Server" }
         return active.baseURL.host ?? active.displayName
     }
+
+    /// Sort (`PhoneList`, left of the server pill): a 44 pt `.iconbtn` with the
+    /// 19 pt sort glyph in `--brand-text`. The same "Sort by" menu as before
+    /// layout v3: Newest or Most visited, bound to the store's order.
+    private var phoneSortMenu: some View {
+        Menu {
+            Picker("Sort by", selection: orderBinding) {
+                Label("Newest", systemImage: "clock").tag(ShortURLsOrder.newest)
+                Label("Most visited", systemImage: "eye").tag(ShortURLsOrder.mostVisited)
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.system(size: 17, weight: .regular))
+                .foregroundStyle(Palette.brand)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Sort")
+    }
+
+    /// Tags matching the current search text, offered under the search card
+    /// while the user types. Empty while not searching, so the URL/code results
+    /// show normally.
+    private var tagSuggestions: [String] {
+        tagsStore.suggestions(for: store.searchTerm)
+    }
     #endif
 
     private var loadMoreFooter: some View {
@@ -939,28 +994,37 @@ struct ShortURLListScreen: View {
                 Color.clear.frame(width: 1, height: 1)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                serverPill
+                // `PhoneList`: Sort, then the server pill, 2 pt apart.
+                HStack(spacing: 2) {
+                    phoneSortMenu
+                    serverPill
+                }
             }
             .withoutSharedBackground()
         }
         #else
+        // `MacMain`: "Links" at the leading edge (with 12 pt clear before it,
+        // after the sidebar toggle when the sidebar is hidden), Refresh, Sort
+        // and "+" together at the trailing edge, 6 pt apart.
         ToolbarItem(placement: .navigation) {
-            Text("Links")
-                .layoutFont(15, .semibold)
-                .foregroundStyle(Palette.text)
-                .accessibilityAddTraits(.isHeader)
+            HStack(spacing: 0) {
+                if let showSidebar {
+                    SidebarToggleButton(isSidebarVisible: false, action: showSidebar)
+                }
+                Text("Links")
+                    .layoutFont(15, .semibold)
+                    .foregroundStyle(Palette.text)
+                    .accessibilityAddTraits(.isHeader)
+                    .padding(.leading, 12)
+            }
         }
         .withoutSharedBackground()
         ToolbarItem(placement: .primaryAction) {
-            refreshButton
-        }
-        .withoutSharedBackground()
-        ToolbarItem(placement: .primaryAction) {
-            sortMenu
-        }
-        .withoutSharedBackground()
-        ToolbarItem(placement: .primaryAction) {
-            addMenu
+            HStack(spacing: 6) {
+                refreshButton
+                sortMenu
+                addMenu
+            }
         }
         .withoutSharedBackground()
         #endif
@@ -1087,6 +1151,69 @@ struct ShortURLListScreen: View {
         }
     }
 }
+
+#if os(macOS)
+extension ShortURLListScreen {
+    /// Puts a sidebar toggle at the start of the list header (pass `nil` to
+    /// hide it): used while the sidebar is hidden, so it can be shown again.
+    func showingSidebarToggle(_ action: (() -> Void)?) -> ShortURLListScreen {
+        var copy = self
+        copy.showSidebar = action
+        return copy
+    }
+}
+#endif
+
+// MARK: - Tag search suggestions (iPhone)
+
+#if os(iOS)
+private extension View {
+    /// The tag suggestions under the search card: while the typed text matches
+    /// tags, a card of them appears 8 pt below; choosing one runs `onSelect`
+    /// (apply the tag, clear the search, close the keyboard). The layout's
+    /// search is a card, not `.searchable`, so this replaces the system
+    /// `searchSuggestions` with the same data and the same action.
+    func tagSearchSuggestions(
+        _ tags: [String],
+        onSelect: @escaping (String) -> Void
+    ) -> some View {
+        VStack(spacing: 8) {
+            self
+            if !tags.isEmpty {
+                LayoutCard {
+                    VStack(spacing: 0) {
+                        ForEach(tags, id: \.self) { tag in
+                            TagSuggestionRow(tag: tag, onSelect: onSelect)
+                            if tag != tags.last {
+                                RowSeparator()
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// One tappable tag suggestion: a `.row` with the tag glyph and the tag.
+private struct TagSuggestionRow: View {
+    let tag: String
+    let onSelect: (String) -> Void
+
+    var body: some View {
+        Button {
+            onSelect(tag)
+        } label: {
+            Label(tag, systemImage: "tag")
+                .labelStyle(.titleAndIcon)
+                .layoutRow()
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Shows the links with this tag")
+    }
+}
+#endif
 
 // MARK: - Row helpers
 

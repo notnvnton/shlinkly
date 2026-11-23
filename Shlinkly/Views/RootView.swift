@@ -79,6 +79,9 @@ private struct ConfiguredRoot: View {
     /// create request), so the list can tell that apart from the `List` dropping
     /// a selection whose row a refresh took away.
     @State private var detailDismissCount = 0
+    /// The sidebar's visibility, driven by our own toggle (``SidebarToggleButton``)
+    /// rather than the system's, so it sits where `MacMain` draws it.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     #else
     @State private var path: [Route] = []
     #endif
@@ -92,12 +95,18 @@ private struct ConfiguredRoot: View {
 
     var body: some View {
         #if os(macOS)
-        NavigationSplitView {
-            // 216 pt panel plus its 8 pt inset (`MacMain`).
-            TagSidebar(listStore: listStore, tagsStore: tagsStore)
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // 216 pt panel plus its 8 pt inset (`MacMain`). The system's sidebar
+            // toggle is removed here, on the sidebar column (where the modifier
+            // takes effect); ours sits at the right end of the panel's top row.
+            TagSidebar(listStore: listStore, tagsStore: tagsStore, onToggleSidebar: { toggleSidebar() })
+                .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
         } content: {
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, detailDismissCount: detailDismissCount, showSettings: $showSettings)
+                // With the sidebar hidden its toggle can't be reached, so the
+                // list header shows it until the sidebar is back.
+                .showingSidebarToggle(sidebarRevealAction)
                 .navigationSplitViewColumnWidth(min: 300, ideal: 330)
         } detail: {
             if let selection {
@@ -106,11 +115,10 @@ private struct ConfiguredRoot: View {
                 DetailPlaceholder()
             }
         }
-        // The title bar as drawn: no system title or sidebar button, no
-        // toolbar background (one continuous surface). The columns draw their
-        // own title-bar contents as toolbar items.
+        // The title bar as drawn: no system title, no toolbar background (one
+        // continuous surface). The columns draw their own title-bar contents
+        // as toolbar items.
         .removingToolbarTitle()
-        .toolbar(removing: .sidebarToggle)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .onChange(of: listStore.items.first?.id) { _, _ in
             autoSelectFirstIfNeeded()
@@ -232,6 +240,19 @@ private struct ConfiguredRoot: View {
     }
 
     #if os(macOS)
+    /// The list header's "show sidebar" action, only while the sidebar is hidden.
+    private var sidebarRevealAction: (() -> Void)? {
+        guard columnVisibility != .all else { return nil }
+        return { toggleSidebar() }
+    }
+
+    /// Hides or shows the sidebar column.
+    private func toggleSidebar() {
+        withAnimation {
+            columnVisibility = columnVisibility == .all ? .doubleColumn : .all
+        }
+    }
+
     /// On the first macOS launch, selects the first link once the list loads so
     /// the detail column isn't left empty. Fires only once (`didAutoSelectFirst`)
     /// and never overrides an existing selection.
@@ -257,6 +278,8 @@ private struct ConfiguredRoot: View {
 private struct TagSidebar: View {
     let listStore: ShortURLListStore
     let tagsStore: TagsStore
+    /// Hides the sidebar (the toggle at the right end of the panel's top row).
+    let onToggleSidebar: () -> Void
     @Environment(AppModel.self) private var appModel
     @FocusState private var isFocused: Bool
 
@@ -301,6 +324,12 @@ private struct TagSidebar: View {
         .onKeyPress(.upArrow) { move(by: -1) }
         .onKeyPress(.downArrow) { move(by: 1) }
         .sidebarBackground()
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                SidebarToggleButton(isSidebarVisible: true, action: onToggleSidebar)
+            }
+            .withoutSharedBackground()
+        }
         .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
         .task { tagsStore.loadIfNeeded() }
     }
@@ -430,7 +459,8 @@ private struct MacMainPreview: View {
     var body: some View {
         let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
         NavigationSplitView {
-            TagSidebar(listStore: listStore, tagsStore: tagsStore)
+            TagSidebar(listStore: listStore, tagsStore: tagsStore, onToggleSidebar: {})
+                .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
         } content: {
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection,
@@ -441,7 +471,6 @@ private struct MacMainPreview: View {
             DetailScreenPreviewData.screen(period: .allTime)
         }
         .removingToolbarTitle()
-        .toolbar(removing: .sidebarToggle)
         .toolbarBackground(.hidden, for: .windowToolbar)
         .background { WindowBackdrop() }
         .environment(appModel)

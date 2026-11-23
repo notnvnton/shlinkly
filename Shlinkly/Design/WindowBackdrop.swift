@@ -66,3 +66,23 @@ struct MacRowBackground: View {
     }
 }
 #endif
+
+#if os(macOS)
+/// The sidebar toggle as `MacMain` draws it: a `.mbtn-sq` with no fill or
+/// shadow, the sidebar glyph in `--text2`. It replaces the system's toggle.
+struct SidebarToggleButton: View {
+    /// Whether the sidebar is showing, for the label and help text.
+    let isSidebarVisible: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "sidebar.left")
+                .font(.system(size: 13, weight: .regular))
+        }
+        .buttonStyle(.macGhostSquare)
+        .help(isSidebarVisible ? "Hide Sidebar" : "Show Sidebar")
+        .accessibilityLabel(isSidebarVisible ? "Hide sidebar" : "Show sidebar")
+    }
+}
+#endif

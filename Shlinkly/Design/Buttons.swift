@@ -5,8 +5,15 @@
 
 import SwiftUI
 
-// The buttons of layout v3 (`theme.css`). Pressed = brightness 0.96 (CSS
-// `filter: brightness(0.96)`), no other states are drawn.
+// The buttons of layout v3 (`theme.css`), with their states:
+// - iPhone `.btn-primary` / `.btn-secondary`: pressed = brightness 0.96, 120 ms.
+// - Mac `.mbtn` (all variants): hover = brightness 1.04, pressed = brightness
+//   0.94 with the outer shadow off (and, on `.mbtn-primary`, the top highlight
+//   off too), 120 ms ease; disabled = 40% opacity.
+//
+// CSS `filter: brightness(x)` multiplies the colors by x. Darkening is the same
+// multiply here (`colorMultiply`); SwiftUI can't multiply above 1, so hover's
+// 1.04 is an additive `.brightness(0.04)`, which looks the same at this scale.
 
 /// A 1 pt highlight along the top inside edge of `shape` (the CSS
 /// `inset 0 1px 0` shadows).
@@ -73,9 +80,9 @@ private struct LargeButtonBody<Label: View, Background: View>: View {
             .frame(height: 50)
             .background { background }
             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .brightness(configuration.isPressed ? -0.04 : 0)
-            .opacity(isEnabled ? 1 : 0.5)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .colorMultiply(Color(white: configuration.isPressed ? 0.96 : 1))
+            .opacity(isEnabled ? 1 : 0.4)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
@@ -118,6 +125,10 @@ private struct TextButtonBody: View {
 /// `.mbtn` and its variants (Mac): 26 pt, radius 6, text only, 13 pt medium.
 /// The plain button has a minimum width of 76, so "Copy" → "Copied" never
 /// changes its width or moves its neighbours.
+///
+/// States (all variants): hover brightness 1.04, pressed brightness 0.94 with
+/// the outer shadow off (and, on `.mbtn-primary`, the top highlight off), 120 ms
+/// ease; disabled 40% opacity.
 struct MacButtonStyle: ButtonStyle {
     enum Kind {
         /// `.mbtn`: `--mbtn-bg`, a 1 pt `--mbtn-border` ring, `0 1 1` at 4%.
@@ -126,6 +137,9 @@ struct MacButtonStyle: ButtonStyle {
         case primary
         /// `.mbtn-danger`, as the sheets draw it: `--danger` text, no fill.
         case danger
+        /// The sidebar toggle as `MacMain` draws it: a `.mbtn-sq` with no fill
+        /// or shadow, its glyph in `--text2`.
+        case ghost
     }
 
     var kind: Kind = .normal
@@ -150,9 +164,11 @@ private struct MacButtonBody: View {
     let fontSize: CGFloat
     let minWidth: CGFloat?
     @Environment(\.isEnabled) private var isEnabled
+    @State private var isHovering = false
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+        let pressed = configuration.isPressed && isEnabled
         configuration.label
             .layoutFont(fontSize, .medium)
             .foregroundStyle(foreground)
@@ -166,19 +182,26 @@ private struct MacButtonBody: View {
                     shape
                         .fill(Palette.mbtnFill)
                         .overlay { shape.strokeBorder(Palette.mbtnBorder, lineWidth: 1) }
-                        .shadow(color: .black.opacity(0.04), radius: 0.5, y: 1)
+                        .shadow(color: .black.opacity(pressed ? 0 : 0.04), radius: 0.5, y: 1)
                 case .primary:
                     shape
                         .fill(Palette.brandFill)
-                        .overlay { TopHighlight(shape: shape, color: Palette.btnHighlight) }
-                        .shadow(color: Palette.btnDrop, radius: 1, y: 1)
-                case .danger:
+                        .overlay {
+                            TopHighlight(shape: shape, color: Palette.btnHighlight)
+                                .opacity(pressed ? 0 : 1)
+                        }
+                        .shadow(color: pressed ? .clear : Palette.btnDrop, radius: 1, y: 1)
+                case .danger, .ghost:
                     Color.clear
                 }
             }
             .contentShape(shape)
-            .brightness(configuration.isPressed ? -0.04 : 0)
-            .opacity(isEnabled ? 1 : 0.5)
+            .brightness(isHovering && !pressed && isEnabled ? 0.04 : 0)
+            .colorMultiply(Color(white: pressed ? 0.94 : 1))
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 }
+            .animation(.easeInOut(duration: 0.12), value: pressed)
+            .animation(.easeInOut(duration: 0.12), value: isHovering)
     }
 
     private var foreground: Color {
@@ -186,12 +209,13 @@ private struct MacButtonBody: View {
         case .normal: return Palette.text
         case .primary: return Palette.onBrand
         case .danger: return Palette.danger
+        case .ghost: return Palette.text2
         }
     }
 
     private var resolvedMinWidth: CGFloat? {
         if let minWidth { return minWidth }
-        if square || kind == .danger { return nil }
+        if square || kind == .danger || kind == .ghost { return nil }
         return 76
     }
 }
@@ -207,6 +231,8 @@ extension ButtonStyle where Self == MacButtonStyle {
     static var macSquare: MacButtonStyle { MacButtonStyle(square: true) }
     /// `.mbtn.mbtn-sq.mbtn-primary`.
     static var macSquarePrimary: MacButtonStyle { MacButtonStyle(kind: .primary, square: true) }
+    /// The sidebar toggle: `.mbtn-sq` without fill or shadow.
+    static var macGhostSquare: MacButtonStyle { MacButtonStyle(kind: .ghost, square: true) }
 }
 
 extension ButtonStyle where Self == PrimaryButtonStyle {

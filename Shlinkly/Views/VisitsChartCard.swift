@@ -9,16 +9,17 @@ import ShlinklyCore
 /// "Over time", as layout v3 draws it.
 ///
 /// Mac (`MacMain`): one `.mcard`. Its top row holds the "Over time" label and,
-/// when there is a choice, the step button ("Week ⌄", a small `.mbtn` menu);
-/// then the chart (170 pt plot), the axis, and a footer with the date range on
-/// the left and the legend on the right.
+/// when there is a choice, the step control (`.mseg.sm`, "Week | Month") on the
+/// right; then the chart (170 pt plot), the axis, and a footer with the date
+/// range on the left and the legend on the right.
 ///
 /// iPhone (`PhoneDetail`): the "Over time" label with the small segmented step
 /// control on its right, then a `.card` with the chart (180 pt plot) and the
 /// same footer.
 ///
 /// The paging arrows of a paged month chart aren't drawn; they keep working,
-/// as square `.mbtn`s (Mac) or brand chevrons (iPhone) beside the step control.
+/// as square `.mbtn`s (Mac, 24 pt to match the step control) or brand chevrons
+/// (iPhone) beside the step control.
 /// Everything comes from the ``ShortURLDetailStore``; this view holds no state.
 struct VisitsChartCard: View {
     let store: ShortURLDetailStore
@@ -136,23 +137,10 @@ struct VisitsChartCard: View {
         let groupings = store.availableGroupings
         if groupings.count > 1 {
             #if os(macOS)
-            // "Week ⌄": a 22 pt `.mbtn` with 12 pt text and no minimum width.
-            Menu {
-                Picker("Group by", selection: groupingBinding) {
-                    ForEach(groupings, id: \.self) { grouping in
-                        Text(grouping.label).tag(grouping)
-                    }
-                }
-                .pickerStyle(.inline)
-                .labelsHidden()
-            } label: {
-                Text("\(store.chartGrouping.label) ⌄")
-            }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .buttonStyle(MacButtonStyle(height: 22, fontSize: 12, minWidth: 0))
-            .fixedSize()
-            .accessibilityLabel("Group by, \(store.chartGrouping.label)")
+            // `.mseg.sm` ("Week | Month"): the available steps only.
+            MacSegmented("Group by", selection: groupingBinding,
+                         options: groupings.map { .init(value: $0, label: $0.label) },
+                         size: .small)
             #else
             Picker("Group by", selection: groupingBinding) {
                 ForEach(groupings, id: \.self) { grouping in
@@ -206,12 +194,12 @@ struct VisitsChartCard: View {
                 #endif
         }
         #if os(macOS)
-        .buttonStyle(MacButtonStyle(square: true, height: 22))
+        .buttonStyle(MacButtonStyle(square: true, height: 24))
         #else
         .buttonStyle(.plain)
+        .opacity(isEnabled ? 1 : 0.4)
         #endif
         .disabled(!isEnabled)
-        .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(label)
         .help(label)
     }

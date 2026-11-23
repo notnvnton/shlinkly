@@ -64,6 +64,13 @@ struct ServerFormView: View {
         self.onConnected = onConnected
     }
 
+    /// The API key how-to under the Server card (`MacServerSheet`,
+    /// `PhoneServerForm`): the command in monospace, "unrestricted (admin)"
+    /// semibold.
+    private static var keyHelp: Text {
+        Text("On your server, run \(Text("shlink api-key:generate").monospaced()) and copy the key. You can only see it once. Use an \(Text("unrestricted (admin)").fontWeight(.semibold)) key, or you'll only see part of your links.")
+    }
+
     var body: some View {
         form
             .interactiveDismissDisabled(presentedAsSheet && model.isDirty)
@@ -129,6 +136,10 @@ struct ServerFormView: View {
                     }
                 }
             }
+            // `MacServerSheet`: the how-to sits right under the card (the
+            // artboard pulls it up 8 pt into the 14 pt gap).
+            Footnote(Self.keyHelp)
+                .padding(.top, -14)
 
             VStack(alignment: .leading, spacing: 0) {
                 MacCard(solid: true) {
@@ -226,7 +237,7 @@ struct ServerFormView: View {
                                 }
                             }
                         }
-                        Footnote(Text("On your server, run \(Text("shlink api-key:generate").monospaced()) and copy the key. You can only see it once."))
+                        Footnote(Self.keyHelp)
                     }
 
                     VStack(alignment: .leading, spacing: 0) {
