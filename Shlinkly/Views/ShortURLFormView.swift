@@ -682,11 +682,13 @@ private struct LinkFormPreview: View {
 #Preview("PhoneLinkForm light") {
     LinkFormPreview()
         .preferredColorScheme(.light)
+        .previewAsSheet()
 }
 
 #Preview("PhoneLinkForm dark") {
     LinkFormPreview()
         .preferredColorScheme(.dark)
+        .previewAsSheet()
 }
 #endif
 #endif

@@ -117,11 +117,12 @@ private struct ConfiguredRoot: View {
         }
         // The title bar as drawn: the columns draw their own header rows
         // (``MacTitleRow``), so the window has no system title (the scene's
-        // `.hiddenTitleBar`), no toolbar and no system sidebar toggle in any
-        // state. ⌃⌘S and View › Toggle Sidebar belong to the split view, not
-        // the toolbar, and keep working.
+        // `.hiddenTitleBar`), no toolbar items and no system sidebar toggle in
+        // any state. The window toolbar is *not* hidden: that hides the
+        // traffic lights too. ``MacTitleRow`` gives the window an empty
+        // toolbar instead. ⌃⌘S and View › Toggle Sidebar belong to the split
+        // view, not the toolbar, and keep working.
         .toolbar(removing: .sidebarToggle)
-        .hidingWindowToolbar()
         .onChange(of: listStore.items.first?.id) { _, _ in
             autoSelectFirstIfNeeded()
         }
@@ -376,18 +377,6 @@ private struct TagSidebar: View {
 }
 
 private extension View {
-    /// Hides the window toolbar: the header rows are drawn by the columns.
-    /// `toolbarVisibility(_:for:)` from macOS 15, its predecessor
-    /// `toolbar(_:for:)` (macOS 13) below.
-    @ViewBuilder
-    func hidingWindowToolbar() -> some View {
-        if #available(macOS 15, *) {
-            toolbarVisibility(.hidden, for: .windowToolbar)
-        } else {
-            toolbar(.hidden, for: .windowToolbar)
-        }
-    }
-
     /// The sidebar column's background. From macOS 26: none, so the system's
     /// floating glass sidebar is the drawn panel. Below 26: the window surface
     /// with the `.msidebar` panel on it.
@@ -492,7 +481,6 @@ private struct MacMainPreview: View {
             DetailScreenPreviewData.screen(period: .allTime)
         }
         .toolbar(removing: .sidebarToggle)
-        .hidingWindowToolbar()
         .background { WindowBackdrop() }
         .environment(appModel)
         .brandTint()

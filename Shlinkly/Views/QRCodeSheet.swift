@@ -478,12 +478,14 @@ enum QRCodeSheetPreviewData {
     QRCodeSheet(shortURL: QRCodeSheetPreviewData.shortURL)
         .brandTint()
         .preferredColorScheme(.light)
+        .previewAsSheet()
 }
 
 #Preview("PhoneQR dark") {
     QRCodeSheet(shortURL: QRCodeSheetPreviewData.shortURL)
         .brandTint()
         .preferredColorScheme(.dark)
+        .previewAsSheet()
 }
 #endif
 #endif

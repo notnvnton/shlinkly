@@ -424,11 +424,13 @@ private struct SettingsPreview: View {
 #Preview("PhoneSettings light") {
     SettingsPreview()
         .preferredColorScheme(.light)
+        .previewAsSheet()
 }
 
 #Preview("PhoneSettings dark") {
     SettingsPreview()
         .preferredColorScheme(.dark)
+        .previewAsSheet()
 }
 #endif
 #endif

@@ -114,22 +114,42 @@ struct StatusDot: View {
     }
 }
 
-/// `.pill`: the server pill's face. 30 pt, capsule, `--pastel`, 14 pt medium
-/// `--pastel-text`, a status dot, the server, and "⌄".
+/// `.pill`: the server pill's face (`PhoneList`). 30 pt, capsule, `--pastel`,
+/// 12 pt in on the leading side and 10 pt on the trailing side, 6 pt apart: a
+/// status dot, the server (14 pt medium `--pastel-text`), then the drawn
+/// 10 × 10 chevron 2 pt further on (8 pt after the text), centered with it.
 struct ServerPillLabel: View {
     let title: String
 
     var body: some View {
         HStack(spacing: 6) {
             StatusDot()
-            Text("\(title) ⌄")
+            Text(title)
                 .lineLimit(1)
+            PillChevron()
+                .stroke(Palette.pastelText, style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
+                .frame(width: 10, height: 10)
+                .padding(.leading, 2)
+                .accessibilityHidden(true)
         }
         .layoutFont(14, .medium)
         .foregroundStyle(Palette.pastelText)
-        .padding(.horizontal, 12)
+        .padding(.leading, 12)
+        .padding(.trailing, 10)
         .frame(height: 30)
         .background(Palette.pastel, in: Capsule())
         .fixedSize()
+    }
+}
+
+/// The pill's chevron as drawn: `M2 3.5l3 3 3-3` in a 10-unit box.
+private struct PillChevron: Shape {
+    func path(in rect: CGRect) -> Path {
+        let unit = min(rect.width, rect.height) / 10
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 2 * unit, y: rect.minY + 3.5 * unit))
+        path.addLine(to: CGPoint(x: rect.minX + 5 * unit, y: rect.minY + 6.5 * unit))
+        path.addLine(to: CGPoint(x: rect.minX + 8 * unit, y: rect.minY + 3.5 * unit))
+        return path
     }
 }

@@ -144,9 +144,6 @@ struct ShortURLListScreen: View {
     var body: some View {
         screen
         .navigationTitle("Links")
-        #if os(iOS)
-        .toolbar { toolbarContent }
-        #endif
         .sheet(item: $formRoute) { route in
             Group {
                 switch route {
@@ -528,6 +525,11 @@ struct ShortURLListScreen: View {
         phoneList
             .canvasBackground()
             .navigationBarTitleDisplayMode(.inline)
+            // `PhoneList`'s bar is drawn (``phoneNavBar``): the system bar
+            // places its items on its own. Hidden on this screen only; the
+            // detail keeps its system bar and back button.
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) { phoneNavBar }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if !isSelecting {
                     BottomBar { newLinkButton }
@@ -999,25 +1001,28 @@ struct ShortURLListScreen: View {
     // MARK: - Toolbar & bindings
 
     #if os(iOS)
-    /// iPhone: the gear and the server pill (no inline title: the page draws
-    /// its large "Links"), swapped for Cancel / Delete while selecting. The Mac
-    /// has no toolbar items: its header row is drawn (``macHeader``).
-    @ToolbarContentBuilder
-    private var toolbarContent: some ToolbarContent {
-        if isSelecting {
-            ToolbarItem(placement: .topBarLeading) {
+    /// `PhoneList`'s `.navbar`, drawn and pinned: 44 pt, 8 pt in on the
+    /// leading side, 16 pt on the trailing side. The gear (a 44 pt `.iconbtn`)
+    /// at the leading edge; Sort (44 pt) and the server pill, 2 pt apart, at
+    /// the trailing edge. No inline title: the page draws its large "Links".
+    /// While selecting (not drawn) it holds Cancel and Delete, their text
+    /// 16 pt from the edges. Its background is `--bg`'s top color, so rows
+    /// scroll under it.
+    private var phoneNavBar: some View {
+        HStack(spacing: 0) {
+            if isSelecting {
                 Button("Cancel") { exitSelection() }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
+                    .buttonStyle(.navLink())
+                    .padding(.leading, 8)
+                Spacer(minLength: 8)
                 Button(role: .destructive) {
                     requestGroupDelete()
                 } label: {
                     Text(selectedIDs.isEmpty ? "Delete" : "Delete (\(selectedIDs.count))")
                 }
+                .buttonStyle(TextButtonStyle(role: .danger, size: 17))
                 .disabled(selectedIDs.isEmpty)
-            }
-        } else {
-            ToolbarItem(placement: .topBarLeading) {
+            } else {
                 Button {
                     showSettings = true
                 } label: {
@@ -1029,19 +1034,19 @@ struct ShortURLListScreen: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Settings")
-            }
-            .withoutSharedBackground()
-            ToolbarItem(placement: .principal) {
-                Color.clear.frame(width: 1, height: 1)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                // `PhoneList`: Sort, then the server pill, 2 pt apart.
+                Spacer(minLength: 8)
                 HStack(spacing: 2) {
                     phoneSortMenu
                     serverPill
                 }
             }
-            .withoutSharedBackground()
+        }
+        .padding(.leading, 8)
+        .padding(.trailing, 16)
+        .frame(height: 44)
+        .background {
+            Color(light: hex(0xF5F5F8), dark: hex(0x25232E))
+                .ignoresSafeArea(edges: .top)
         }
     }
     #endif

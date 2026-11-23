@@ -52,6 +52,12 @@ struct ShlinklyApp: App {
         // No system title or title bar: the traffic lights stay, and the
         // columns draw the header rows themselves (`MacMain`, ``MacTitleRow``).
         .windowStyle(.hiddenTitleBar)
+        // The window keeps an empty toolbar (it puts the traffic lights on the
+        // header rows' line, see `MacTitleRow`). Removing View › Show/Hide
+        // Toolbar keeps it from being hidden.
+        .commands {
+            CommandGroup(replacing: .toolbar) {}
+        }
         #if SPARKLE
         // Direct-distribution only: a standard "Check for Updates…" item in the app
         // menu, wired to Sparkle and disabled while a check can't run. Compiled out of

@@ -204,7 +204,7 @@ struct ServerFormView: View {
     private var form: some View {
         @Bindable var model = model
         return VStack(spacing: 0) {
-            SheetHeader(title) {
+            SheetHeader(title, inSheet: presentedAsSheet) {
                 if presentedAsSheet {
                     Button("Cancel") { attemptClose() }
                         .buttonStyle(.navLink())
@@ -423,11 +423,13 @@ private struct EditServerPreview: View {
 #Preview("PhoneServerForm light") {
     EditServerPreview()
         .preferredColorScheme(.light)
+        .previewAsSheet()
 }
 
 #Preview("PhoneServerForm dark") {
     EditServerPreview()
         .preferredColorScheme(.dark)
+        .previewAsSheet()
 }
 #endif
 #endif

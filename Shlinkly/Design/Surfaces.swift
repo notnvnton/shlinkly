@@ -208,14 +208,23 @@ struct MacSheet<Content: View, Bar: View>: View {
 #endif
 
 #if os(iOS)
-/// The iPhone sheets' own navigation bar (`.navbar`): a 22 pt semibold title
-/// on the leading side, one text action on the trailing side.
+/// The iPhone sheets' own header (`.navbar` as `PhoneQR`, `PhoneLinkForm`,
+/// `PhoneServerForm` and `PhoneSettings` draw it): 52 pt in all, of which the
+/// top 14 pt is padding (`box-sizing: border-box`), so the row's center is
+/// 33 pt below the sheet's top edge. The 22 pt semibold title at the 20 pt
+/// leading inset, one text action ("Done" / "Cancel", no padding of its own)
+/// with its text edge on the 20 pt trailing inset.
+///
+/// `inSheet: false` is the same form pushed onto a navigation stack (the
+/// server form from onboarding, not drawn): a 44 pt row under the system bar.
 struct SheetHeader<Trailing: View>: View {
     private let title: String
+    private let inSheet: Bool
     private let trailing: Trailing
 
-    init(_ title: String, @ViewBuilder trailing: () -> Trailing) {
+    init(_ title: String, inSheet: Bool = true, @ViewBuilder trailing: () -> Trailing) {
         self.title = title
+        self.inSheet = inSheet
         self.trailing = trailing()
     }
 
@@ -229,11 +238,24 @@ struct SheetHeader<Trailing: View>: View {
             Spacer(minLength: 8)
             trailing
         }
-        .frame(height: 44)
-        .padding(.leading, 20)
-        .padding(.trailing, 12)
+        .frame(height: inSheet ? 38 : 44)
+        .padding(.top, inSheet ? 14 : 0)
+        .padding(.horizontal, 20)
     }
 }
+
+#if DEBUG
+extension View {
+    /// Shows a sheet's content the way the app presents it (over a blank
+    /// screen, in a system sheet), so its header sits against the sheet's top
+    /// edge as the artboards draw it.
+    func previewAsSheet() -> some View {
+        Color.gray.opacity(0.4)
+            .ignoresSafeArea()
+            .sheet(isPresented: .constant(true)) { self }
+    }
+}
+#endif
 
 /// `.bottombar` (iPhone): the screen's main actions, 12 pt apart, 20 pt in,
 /// 12 pt above. The artboard's 34 pt below is the home-indicator area, which

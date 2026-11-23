@@ -12,11 +12,13 @@ import AppKit
 /// no system title or toolbar (`.hiddenTitleBar`, toolbar hidden), so these
 /// rows are the title bar:
 ///
-/// - **On the traffic lights' line.** The system decides where the traffic
-///   lights sit, and that differs between macOS versions, so the row reads it
-///   from the window (the close button's center) and moves its content onto
-///   that line. In full screen (no traffic lights) and in previews the row
-///   keeps the drawn position: centered in its own height.
+/// - **On the traffic lights' line.** The window keeps an empty unified
+///   toolbar (installed here, see ``TitleRowChromeView/installEmptyToolbar``),
+///   which puts the traffic lights 26 pt down, the drawn 52 pt row's center.
+///   The row still reads the line from the window (the close button's
+///   center) and moves its content onto it. When the buttons can't be seen
+///   (full screen, previews) the line is 26 pt down, and it's never higher
+///   than that, so nothing comes closer than 13 pt to the window's top edge.
 /// - **Window chrome.** Its empty parts drag the window
 ///   (`performWindowDrag(with:)`, also on an inactive window) and a double
 ///   click does what System Settings › Desktop & Dock says a title-bar double
@@ -48,6 +50,10 @@ struct MacTitleRow<Content: View>: View {
 
 /// What a row reads from its window.
 struct TitleRowMetrics: Equatable {
+    /// The traffic lights' line, from the window's top edge, when they can't
+    /// be read; also the highest the line may be.
+    static let defaultCenter: CGFloat = 26
+
     /// How far the row moves down (or up) from the top of its column so its
     /// center is on the traffic lights' line.
     var topOffset: CGFloat = 0
@@ -95,6 +101,44 @@ final class TitleRowChromeView: NSView {
         }
     }
 
+    /// Whether `view` can actually be seen: neither it nor an ancestor is
+    /// hidden or fully transparent. Hiding the window toolbar hides the
+    /// buttons' container, not the buttons, so `isHidden` alone isn't enough.
+    private static func isShowing(_ view: NSView) -> Bool {
+        guard !view.isHiddenOrHasHiddenAncestor else { return false }
+        var current: NSView? = view
+        while let candidate = current {
+            if candidate.alphaValue <= 0.01 { return false }
+            current = candidate.superview
+        }
+        return true
+    }
+
+    /// Gives the window an empty unified toolbar when it has none. SwiftUI
+    /// installs no toolbar when there are no toolbar items (and hiding the
+    /// window toolbar would hide the traffic lights with it); without one the
+    /// traffic lights sit 16 pt down, in a 32 pt title bar. The empty toolbar
+    /// makes the title bar 52 pt, with the traffic lights on its center line,
+    /// as `MacMain` draws them. It has no items, so it draws nothing and
+    /// takes no clicks; `.hiddenTitleBar` keeps its background transparent.
+    /// View › Show/Hide Toolbar is removed from the menu (`ShlinklyApp`), so
+    /// it can't be hidden.
+    static func installEmptyToolbar(in window: NSWindow) {
+        guard window.toolbar == nil else { return }
+        let toolbar = NSToolbar(identifier: "de.ahodge.shlinkly.main.empty")
+        toolbar.allowsUserCustomization = false
+        toolbar.displayMode = .iconOnly
+        // AppKit keeps the content size when a toolbar arrives, growing the
+        // window; keep the frame instead, so a restored window doesn't grow
+        // on every launch.
+        let frame = window.frame
+        window.toolbarStyle = .unified
+        window.toolbar = toolbar
+        if !window.styleMask.contains(.fullScreen) {
+            window.setFrame(frame, display: true)
+        }
+    }
+
     /// The system's title-bar double-click action (`AppleActionOnDoubleClick`
     /// in the global domain): minimize, nothing, or zoom (also for "Fill").
     private static func performTitleBarDoubleClick(in window: NSWindow) {
@@ -138,22 +182,29 @@ final class TitleRowChromeView: NSView {
     /// of the run loop, never during a SwiftUI update).
     func report() {
         guard let window else { return }
+        if window.toolbar == nil {
+            // Not during layout: adding a toolbar re-lays out the window.
+            DispatchQueue.main.async { [weak window] in
+                if let window { Self.installEmptyToolbar(in: window) }
+            }
+        }
+        // Window coordinates count up from the bottom.
+        let height = window.frame.height
+        let mine = convert(bounds, to: nil)
+        let top = height - mine.maxY
+        var lightsCenter = TitleRowMetrics.defaultCenter
         var metrics = TitleRowMetrics()
         if !window.styleMask.contains(.fullScreen),
            let close = window.standardWindowButton(.closeButton),
            let zoom = window.standardWindowButton(.zoomButton),
-           !close.isHidden, close.window === window {
-            // Window coordinates count up from the bottom.
-            let height = window.frame.height
+           close.window === window, Self.isShowing(close) {
             let closeRect = close.convert(close.bounds, to: nil)
             let zoomRect = zoom.convert(zoom.bounds, to: nil)
-            let mine = convert(bounds, to: nil)
-            let lightsCenter = height - closeRect.midY
-            let top = height - mine.maxY
-            metrics.topOffset = (lightsCenter - top - rowHeight / 2).rounded()
+            lightsCenter = max(height - closeRect.midY, TitleRowMetrics.defaultCenter)
             let trailing = zoomRect.maxX - mine.minX
             metrics.lightsTrailing = trailing > 0 && zoomRect.minY >= mine.minY ? trailing.rounded() : nil
         }
+        metrics.topOffset = (lightsCenter - top - rowHeight / 2).rounded()
         guard metrics != last else { return }
         last = metrics
         DispatchQueue.main.async { [weak self] in
