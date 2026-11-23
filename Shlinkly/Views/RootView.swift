@@ -103,10 +103,9 @@ private struct ConfiguredRoot: View {
                 .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
         } content: {
+            // With the sidebar hidden, the removal above no longer applies (its
+            // view is gone), so the system's own toggle shows: the only one.
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, detailDismissCount: detailDismissCount, showSettings: $showSettings)
-                // With the sidebar hidden its toggle can't be reached, so the
-                // list header shows it until the sidebar is back.
-                .showingSidebarToggle(sidebarRevealAction)
                 .navigationSplitViewColumnWidth(min: 300, ideal: 330)
         } detail: {
             if let selection {
@@ -115,9 +114,9 @@ private struct ConfiguredRoot: View {
                 DetailPlaceholder()
             }
         }
-        // The title bar as drawn: no system title, no toolbar background (one
-        // continuous surface). The columns draw their own title-bar contents
-        // as toolbar items.
+        // The title bar as drawn: no toolbar background (one continuous
+        // surface). Below macOS 26 the list column draws its own "Links" in
+        // place of the system title; from 26 the system title is "Links".
         .removingToolbarTitle()
         .toolbarBackground(.hidden, for: .windowToolbar)
         .onChange(of: listStore.items.first?.id) { _, _ in
@@ -240,12 +239,6 @@ private struct ConfiguredRoot: View {
     }
 
     #if os(macOS)
-    /// The list header's "show sidebar" action, only while the sidebar is hidden.
-    private var sidebarRevealAction: (() -> Void)? {
-        guard columnVisibility != .all else { return nil }
-        return { toggleSidebar() }
-    }
-
     /// Hides or shows the sidebar column.
     private func toggleSidebar() {
         withAnimation {
@@ -364,12 +357,15 @@ private struct TagSidebar: View {
 }
 
 private extension View {
-    /// Hides the system window title, which the layout replaces with the list
-    /// column's own "Links". The API exists from macOS 15; on 14 the system
-    /// title stays.
+    /// Hides the system window title on macOS 15, where the list column draws
+    /// its own "Links" in its place. From macOS 26 the system title *is* the
+    /// list's "Links" (it truncates with an ellipsis as the column narrows), so
+    /// it stays. On 14 the API doesn't exist and the system title stays too.
     @ViewBuilder
     func removingToolbarTitle() -> some View {
-        if #available(macOS 15, *) {
+        if #available(macOS 26, *) {
+            self
+        } else if #available(macOS 15, *) {
             toolbar(removing: .title)
         } else {
             self

@@ -51,11 +51,7 @@ struct ShortURLListScreen: View {
     /// `false` only in previews, whose store is seeded and must not hit a
     /// server.
     private var loadsOnAppear = true
-    #if os(macOS)
-    /// Shows the sidebar again: set while the sidebar is hidden, so its toggle
-    /// sits at the start of the list header (see ``showingSidebarToggle(_:)``).
-    private var showSidebar: (() -> Void)?
-    #else
+    #if os(iOS)
     /// Whether the search card's field has focus; choosing a tag suggestion
     /// clears it, closing the keyboard.
     @FocusState private var isSearchFocused: Bool
@@ -1003,34 +999,45 @@ struct ShortURLListScreen: View {
             .withoutSharedBackground()
         }
         #else
-        // `MacMain`: "Links" at the leading edge (with 12 pt clear before it,
-        // after the sidebar toggle when the sidebar is hidden), Refresh, Sort
-        // and "+" together at the trailing edge, 6 pt apart.
-        ToolbarItem(placement: .navigation) {
-            HStack(spacing: 0) {
-                if let showSidebar {
-                    SidebarToggleButton(isSidebarVisible: false, action: showSidebar)
-                }
+        // `MacMain`: "Links" at the column's leading edge, Refresh, Sort and
+        // "+" together at its trailing edge, 6 pt apart (one item, so the
+        // spacing is ours, not the toolbar's).
+        if #available(macOS 26, *) {
+            // The system title is "Links" (`.navigationTitle`), truncating
+            // with an ellipsis as the column narrows; the flexible spacer pushes
+            // the buttons to the trailing edge, so they never touch it.
+            ToolbarSpacer(.flexible)
+            ToolbarItem(placement: .primaryAction) {
+                macHeaderButtons
+            }
+            .withoutSharedBackground()
+        } else {
+            // Below 26 the system title is hidden and "Links" is our own text,
+            // with 12 pt clear before it.
+            ToolbarItem(placement: .navigation) {
                 Text("Links")
                     .layoutFont(15, .semibold)
                     .foregroundStyle(Palette.text)
                     .accessibilityAddTraits(.isHeader)
                     .padding(.leading, 12)
             }
-        }
-        .withoutSharedBackground()
-        ToolbarItem(placement: .primaryAction) {
-            HStack(spacing: 6) {
-                refreshButton
-                sortMenu
-                addMenu
+            ToolbarItem(placement: .primaryAction) {
+                macHeaderButtons
             }
         }
-        .withoutSharedBackground()
         #endif
     }
 
     #if os(macOS)
+    /// Refresh, Sort and "+", 6 pt apart.
+    private var macHeaderButtons: some View {
+        HStack(spacing: 6) {
+            refreshButton
+            sortMenu
+            addMenu
+        }
+    }
+
     /// Manual refresh (`.mbtn-sq`). The Mac has no pull-to-refresh, so this is
     /// how the user reloads on demand; it re-queries the active
     /// page/search/sort, keeping the current rows visible. A small spinner
@@ -1151,18 +1158,6 @@ struct ShortURLListScreen: View {
         }
     }
 }
-
-#if os(macOS)
-extension ShortURLListScreen {
-    /// Puts a sidebar toggle at the start of the list header (pass `nil` to
-    /// hide it): used while the sidebar is hidden, so it can be shown again.
-    func showingSidebarToggle(_ action: (() -> Void)?) -> ShortURLListScreen {
-        var copy = self
-        copy.showSidebar = action
-        return copy
-    }
-}
-#endif
 
 // MARK: - Tag search suggestions (iPhone)
 
