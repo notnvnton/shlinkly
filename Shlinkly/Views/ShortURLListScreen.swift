@@ -429,14 +429,14 @@ struct ShortURLListScreen: View {
     }
 
     /// The trailing-swipe Share button. A plain `Button` (not `ShareLink`) that
-    /// routes through the centralized state-driven share sheet.
+    /// routes through the centralized state-driven share sheet. No tint: the
+    /// system's neutral swipe gray keeps it apart from the accent Edit.
     private func swipeShareButton(_ item: ShortURL) -> some View {
         Button {
             shareShortURL(item)
         } label: {
             Label("Share", systemImage: "square.and.arrow.up")
         }
-        .tint(.indigo)
     }
     #endif
 
@@ -571,7 +571,7 @@ struct ShortURLListScreen: View {
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     swipeDeleteButton(item)
-                    editButton(item).tint(.blue)
+                    editButton(item).tint(.accentColor)
                     swipeShareButton(item)
                 }
                 .contextMenu {

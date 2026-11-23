@@ -60,7 +60,9 @@ private enum WidgetDestination {
 private extension ShapeStyle where Self == Color {
     /// The brand purple. Local to the widget: its process shares no asset
     /// catalogue with the app, and a launcher isn't worth an asset dependency.
-    static var brand: Color { Color(red: 0.42, green: 0.29, blue: 0.78) }
+    /// Mirrors the app's light `AccentColor` (#5249A8) until build 2 moves the
+    /// widget onto shared tokens.
+    static var brand: Color { Color(red: 0.322, green: 0.286, blue: 0.659) }
 }
 
 struct LauncherView: View {

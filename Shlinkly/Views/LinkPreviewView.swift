@@ -42,8 +42,8 @@ struct LinkPreviewView: View {
     }
 
     private var placeholder: some View {
-        RoundedRectangle(cornerRadius: 12)
-            .fill(Color.primary.opacity(0.06))
+        RoundedRectangle(cornerRadius: Radius.tile, style: .continuous)
+            .fill(Palette.sunken)
             .frame(height: 84)
             .overlay { ProgressView() }
             .accessibilityLabel("Loading link preview")
@@ -54,15 +54,16 @@ struct LinkPreviewView: View {
     private var fallback: some View {
         HStack(spacing: 10) {
             Image(systemName: "link")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.textSecondary)
             Text(url.absoluteString)
                 .font(.subheadline)
+                .foregroundStyle(Palette.textPrimary)
                 .lineLimit(1)
                 .truncationMode(.middle)
             Spacer(minLength: 0)
         }
         .padding(12)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
+        .background(Palette.sunken, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
     }
 }
 
@@ -76,7 +77,7 @@ import AppKit
 /// SwiftUI `ScrollView` — the same gesture theft the iOS branch fixes with
 /// `isUserInteractionEnabled = false`. Dropping the view out of hit-testing lets
 /// scrolls and clicks fall through to the page. The preview is decorative here;
-/// the header carries the "Open in browser" button.
+/// the header card carries the destination row and the Open tile.
 private final class PassthroughLinkView: LPLinkView {
     override func hitTest(_ point: NSPoint) -> NSView? { nil }
 }
@@ -104,8 +105,8 @@ private struct LinkMetadataView: UIViewRepresentable {
         // recognizers. Inside a SwiftUI ScrollView those win the pan, so a
         // drag that begins on the preview never scrolls the page (programmatic
         // scrolling still works — which is what made this look fixed before).
-        // The preview is decorative here — the header carries a dedicated
-        // "Open in browser" button — so make it non-interactive and let touches
+        // The preview is decorative here — the header card carries the
+        // destination row and the Open tile — so make it non-interactive and let touches
         // fall through to the scroll view.
         view.isUserInteractionEnabled = false
         return view

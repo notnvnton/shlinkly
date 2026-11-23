@@ -20,8 +20,9 @@ import ShlinklyCore
 /// with its exact period and count above it.
 struct VisitsBarChart: View {
     let data: [VisitBucket]
-    /// The people / bots split of the same columns, for the callout. Always
-    /// carries both halves, whatever the bot toggle says.
+    /// The people / bots split of the same columns: drawn as the stacked bars
+    /// (bots on top only while `excludeBots` is off) and spelled out in the
+    /// callout. Always carries both halves, whatever the bot toggle says.
     let breakdowns: [VisitBucketBreakdown]
     /// The step each bar spans; picks the bar width, the axis label format and
     /// the callout's wording.
@@ -63,24 +64,40 @@ struct VisitsBarChart: View {
 
     var body: some View {
         Chart {
-            ForEach(data) { bucket in
+            // People at the bottom, bots stacked on top (only while bots are
+            // counted). Explicit `yStart`/`yEnd` ranges rather than Charts' own
+            // stacking, so the order is fixed and only the top segment of each
+            // column gets the rounded corners.
+            ForEach(breakdowns) { column in
+                let showsBots = !excludeBots && column.bots > 0
+                let opacity = barOpacity(for: column.start)
                 BarMark(
-                    x: .value("Date", bucket.start, unit: unit, calendar: calendar),
-                    y: .value("Visits", bucket.count),
+                    x: .value("Date", column.start, unit: unit, calendar: calendar),
+                    yStart: .value("Visits", 0),
+                    yEnd: .value("Visits", column.people),
                     width: barWidth.map { .fixed($0) } ?? .automatic
                 )
-                .foregroundStyle(Color.accentColor)
-                // With a bar selected, the others recede.
-                .opacity(selectedBucket == nil || selectedBucket?.id == bucket.id ? 1 : 0.35)
-                // Round the top of each bar for a softer, less "spreadsheet" look.
-                .cornerRadius(min(5, (barWidth ?? 10) / 2))
+                .foregroundStyle(Palette.seriesPeople)
+                .opacity(opacity)
+                .clipShape(barShape(isTop: !showsBots))
+                if showsBots {
+                    BarMark(
+                        x: .value("Date", column.start, unit: unit, calendar: calendar),
+                        yStart: .value("Visits", column.people),
+                        yEnd: .value("Visits", column.total),
+                        width: barWidth.map { .fixed($0) } ?? .automatic
+                    )
+                    .foregroundStyle(Palette.seriesBots)
+                    .opacity(opacity)
+                    .clipShape(barShape(isTop: true))
+                }
             }
             if let selectedBucket {
                 // A faint guide behind the bars. The callout is *not* an annotation
                 // on this mark: an annotation is drawn at its mark's depth, so tall
                 // bars showed through it. It lives in the chart overlay instead.
                 RuleMark(x: .value("Selected", selectedBucket.start, unit: unit, calendar: calendar))
-                    .foregroundStyle(Color.primary.opacity(0.12))
+                    .foregroundStyle(Palette.hairline)
                     .zIndex(-1)
             }
         }
@@ -94,8 +111,9 @@ struct VisitsBarChart: View {
             // line — no dashes, no heavy gridlines.
             AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color.primary.opacity(0.08))
+                    .foregroundStyle(Palette.hairline)
                 AxisValueLabel()
+                    .foregroundStyle(Palette.textSecondary)
             }
         }
         .chartXAxis {
@@ -109,15 +127,16 @@ struct VisitsBarChart: View {
             // lets the text keep its natural width. Do not revert to `AxisValueLabel(format:)`.
             AxisMarks(values: labelDates) { value in
                 AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Color.primary.opacity(0.08))
+                    .foregroundStyle(Palette.hairline)
                 AxisTick()
-                    .foregroundStyle(Color.primary.opacity(0.15))
+                    .foregroundStyle(Palette.hairline)
                 // An explicit, standard anchor: the label hangs below its tick and
                 // starts at it — where Charts puts it by default — without leaving
                 // Charts to derive a custom `UnitPoint` (which it warns about).
                 AxisValueLabel(anchor: .topLeading) {
                     if let date = value.as(Date.self) {
                         Text(date, format: axisLabelFormat)
+                            .foregroundStyle(Palette.textSecondary)
                             .fixedSize()
                     }
                 }
@@ -213,6 +232,23 @@ struct VisitsBarChart: View {
         return data.first { $0.contains(selectedDate) }
     }
 
+    /// Full strength with nothing selected or for the selected column; with a
+    /// column selected, the others recede.
+    private func barOpacity(for columnStart: Date) -> Double {
+        guard let selectedBucket else { return 1 }
+        return selectedBucket.start == columnStart ? 1 : 0.45
+    }
+
+    /// A bar segment's clip: the top segment of a column gets rounded top
+    /// corners for a softer, less "spreadsheet" look; the segment under it
+    /// stays square so the stack reads as one bar.
+    private func barShape(isTop: Bool) -> UnevenRoundedRectangle {
+        let radius = isTop ? min(5, (barWidth ?? 10) / 2) : 0
+        return UnevenRoundedRectangle(topLeadingRadius: radius,
+                                      topTrailingRadius: radius,
+                                      style: .continuous)
+    }
+
     // MARK: - Callout
 
     /// Where the callout goes for `bucket`: inside the plot, pinned to its top
@@ -243,41 +279,33 @@ struct VisitsBarChart: View {
         return index * 2 < data.count
     }
 
-    /// An opaque system surface that follows light / dark on its own. Not a
-    /// material: inside a chart annotation a material has nothing to blur and
-    /// came out near-black in light mode on iPhone, hiding the text.
-    private var calloutBackground: Color {
-        #if os(iOS)
-        Color(uiColor: .secondarySystemGroupedBackground)
-        #else
-        Color(nsColor: .controlBackgroundColor)
-        #endif
-    }
-
     /// The floating card beside the selected bar: its period and its exact
-    /// count. Borrows the toast pill's hairline border and soft shadow on a
-    /// rounded rectangle, since it stacks several lines.
+    /// count, on an opaque ``Palette/surface`` (not a material: inside the
+    /// chart a material has nothing to blur and came out near-black in light
+    /// mode on iPhone) with the card outline and a soft shadow.
     private func callout(for bucket: VisitBucket) -> some View {
-        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
         return VStack(spacing: 1) {
             Text(periodTitle(for: bucket))
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.textSecondary)
             Text(countTitle(for: bucket.count))
                 .font(.subheadline.weight(.semibold))
-                .foregroundStyle(.primary)
+                .monospacedDigit()
+                .foregroundStyle(Palette.textPrimary)
             if let detail = breakdownTitle(for: bucket) {
                 Text(detail)
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .foregroundStyle(Palette.textSecondary)
             }
         }
         .fixedSize()
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(calloutBackground, in: shape)
-        .overlay(shape.strokeBorder(.separator))
-        .shadow(color: .black.opacity(0.18), radius: 8, y: 2)
+        .background(Palette.surface, in: shape)
+        .overlay(shape.strokeBorder(Palette.cardBorder, lineWidth: 1))
+        .shadow(color: .black.opacity(0.08), radius: 6, y: 4)
     }
 
     /// The selected column's headline count. With bots excluded the bars count

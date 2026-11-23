@@ -6,9 +6,10 @@
 import SwiftUI
 import ShlinklyCore
 
-/// The contents of the detail screen's chart card: the title, the date span
-/// (with the paging arrows when the month chart is paged), the step picker, and
-/// below them the chart itself — or its loading / empty / error stand-in.
+/// The detail screen's chart card: the "Over time · <step>" label band with the
+/// series legend, a controls row (the date span, with the paging arrows when
+/// the month chart is paged, and the step picker), and below them the chart
+/// itself — or its loading / empty / error stand-in.
 ///
 /// Everything it shows comes from the ``ShortURLDetailStore``; it holds no state
 /// of its own. Kept apart from ``DetailScreen`` so it can be previewed with a
@@ -17,30 +18,71 @@ struct VisitsChartCard: View {
     let store: ShortURLDetailStore
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(store.chartSubtitle)
-                        .font(.headline)
-                    dateRange
-                }
-                Spacer(minLength: 0)
-                groupingPicker
+        Card("Over time · \(store.chartGrouping.label)") {
+            VStack(alignment: .leading, spacing: Space.tight) {
+                controlsRow
+                    .padding(.horizontal, Space.cardInset)
+                chartContent
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, Space.cardInset)
+                    .padding(.top, Space.hairline)
+                    .padding(.bottom, Space.cardInset)
             }
-            chartContent
-                .frame(maxWidth: .infinity)
+        } accessory: {
+            if store.state == .loaded {
+                legend
+            }
+        }
+    }
+
+    // MARK: - Legend
+
+    /// People always; Bots only while they are drawn (exclude bots off).
+    private var legend: some View {
+        HStack(spacing: 10) {
+            legendItem("People", color: Palette.seriesPeople)
+            if !store.excludeBots {
+                legendItem("Bots", color: Palette.seriesBots)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func legendItem(_ title: String, color: Color) -> some View {
+        HStack(spacing: 4) {
+            RoundedRectangle(cornerRadius: 2, style: .continuous)
+                .fill(color)
+                .frame(width: 8, height: 8)
+            Text(title)
+                .font(.caption)
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(1)
+        }
+    }
+
+    // MARK: - Controls row
+
+    /// The date span on the leading side, the step picker (when there is a
+    /// choice) on the trailing side.
+    private var controlsRow: some View {
+        HStack(alignment: .center, spacing: Space.tight) {
+            dateRange
+            Spacer(minLength: 0)
+            groupingPicker
         }
     }
 
     // MARK: - Date span & paging
 
-    /// The span under the title. When the month chart is paged it is flanked by
+    /// The chart's date span. When the month chart is paged it is flanked by
     /// the "‹" / "›" arrows that turn the page a year at a time.
     @ViewBuilder
     private var dateRange: some View {
         let label = Text(store.chartDateRange)
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.footnote)
+            .foregroundStyle(Palette.textSecondary)
+            .monospacedDigit()
+            .lineLimit(1)
         if store.state == .loaded, store.isChartPaged {
             HStack(spacing: 0) {
                 pageButton(systemImage: "chevron.left",
@@ -56,7 +98,7 @@ struct VisitsChartCard: View {
                 }
             }
             // Pull the row left so the chevron's glyph, not its roomy tap
-            // target, lines up with the title above.
+            // target, lines up with the card's text edge.
             .padding(.leading, -Self.pageButtonInset)
         } else {
             label
@@ -85,6 +127,7 @@ struct VisitsChartCard: View {
         Button(action: action) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.semibold))
+                .foregroundStyle(isEnabled ? Palette.accent : Palette.textSecondary.opacity(0.5))
                 .frame(width: Self.pageButtonSide, height: Self.pageButtonSide)
                 .contentShape(Rectangle())
         }
@@ -98,7 +141,7 @@ struct VisitsChartCard: View {
     /// The chart's step control (Day / Week / Month / Year). Only "All time"
     /// offers a choice, and only when the window is long enough for a coarser
     /// step to be worth drawing; otherwise there is nothing to pick and it stays
-    /// out of the header.
+    /// out of the card.
     @ViewBuilder
     private var groupingPicker: some View {
         let groupings = store.availableGroupings
@@ -170,14 +213,15 @@ struct VisitsChartCard: View {
         VStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.largeTitle)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Palette.textSecondary)
             Text(title)
                 .font(.headline)
+                .foregroundStyle(Palette.textPrimary)
                 .multilineTextAlignment(.center)
             if let detail {
                 Text(detail)
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Palette.textSecondary)
                     .multilineTextAlignment(.center)
             }
             action()
@@ -233,9 +277,8 @@ private enum VisitsChartCardPreviewData {
 
 #Preview("Months, 12 at a time") {
     VisitsChartCard(store: VisitsChartCardPreviewData.store())
-        .padding(16)
-        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-        .padding()
+        .padding(Space.screenEdge)
         .frame(maxWidth: 680)
+        .canvasBackground()
 }
 #endif

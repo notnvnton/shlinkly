@@ -9,7 +9,7 @@ import UIKit
 #endif
 
 /// A copy-to-clipboard button with brief visual confirmation: the icon swaps
-/// from `doc.on.doc` to a green `checkmark` for ~1.2s (with a light haptic on
+/// from `doc.on.doc` to an accent `checkmark` for ~1.2s (with a light haptic on
 /// iOS), then swaps back. Shared by the detail header and the edit form's
 /// read-only short-code field so the feedback is identical in both places.
 struct CopyButton: View {
@@ -18,6 +18,9 @@ struct CopyButton: View {
     /// Describes what gets copied; used for the macOS tooltip and the
     /// accessibility label (which becomes "Copied" briefly after a tap).
     var label: String = "Copy"
+    /// The side of the square tap target around the 22 pt glyph box. The
+    /// detail header asks for the 44 pt touch minimum.
+    var targetSide: CGFloat = 22
 
     @State private var didCopy = false
     @State private var resetTask: Task<Void, Never>?
@@ -28,10 +31,12 @@ struct CopyButton: View {
         } label: {
             Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                 .font(.subheadline)
-                .foregroundStyle(didCopy ? Color.green : Color.accentColor)
+                .foregroundStyle(Color.accentColor)
                 .contentTransition(.symbolEffect(.replace))
                 // Fixed box so the doc → checkmark swap can't nudge layout.
                 .frame(width: 22, height: 22)
+                .frame(width: max(targetSide, 22), height: max(targetSide, 22))
+                .contentShape(Rectangle())
         }
         .buttonStyle(.borderless)
         .help(label)

@@ -5,20 +5,27 @@
 
 import SwiftUI
 import ShlinklyCore
+#if os(iOS)
+import UIKit
+#endif
 
-/// The short-URL detail screen: header, native link preview, tags, a period
-/// control, lifetime/period metric cards, a bot toggle and a per-day visits
-/// chart.
+/// The short-URL detail screen: a header card (title, short URL, destination,
+/// tags and the Copy / Share / Open tiles), the native link preview, the visits
+/// card (period control, lifetime/period metric tiles, bot toggle), the visits
+/// chart, and the country and source breakdowns.
 ///
 /// Owns a ``ShortURLDetailStore`` bound to the passed short URL and the active
 /// server's client. The layout is a single vertical scroll on every platform;
 /// on macOS it fills the detail column of the split view.
 struct DetailScreen: View {
     @State private var store: ShortURLDetailStore
-    @State private var didInitialLoad = false
+    @State private var didInitialLoad: Bool
     @State private var isEditing = false
     @State private var pendingDelete: ShortURL?
     @State private var deleteError: String?
+    /// Drives the Copy tile's brief checkmark.
+    @State private var didCopyFromTile = false
+    @State private var copyResetTask: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
 
     /// The active server's client and the shared tag cache, threaded so the edit
@@ -41,7 +48,28 @@ struct DetailScreen: View {
         onSelectTag: @escaping (String) -> Void,
         onDeleted: @escaping () -> Void
     ) {
-        _store = State(initialValue: ShortURLDetailStore(shortURL: shortURL, client: client))
+        self.init(store: ShortURLDetailStore(shortURL: shortURL, client: client),
+                  client: client,
+                  listStore: listStore,
+                  tagsStore: tagsStore,
+                  loadsOnAppear: true,
+                  onSelectTag: onSelectTag,
+                  onDeleted: onDeleted)
+    }
+
+    /// The designated initializer. Previews pass an already-seeded store and
+    /// `loadsOnAppear: false`, so the screen never talks to a server.
+    fileprivate init(
+        store: ShortURLDetailStore,
+        client: ShlinkClient,
+        listStore: ShortURLListStore,
+        tagsStore: TagsStore,
+        loadsOnAppear: Bool,
+        onSelectTag: @escaping (String) -> Void,
+        onDeleted: @escaping () -> Void
+    ) {
+        _store = State(initialValue: store)
+        _didInitialLoad = State(initialValue: !loadsOnAppear)
         self.client = client
         self.listStore = listStore
         self.tagsStore = tagsStore
@@ -53,25 +81,21 @@ struct DetailScreen: View {
 
     var body: some View {
         ScrollView {
-            // Each block is its own card so the dense page reads as distinct
-            // sections rather than one wall of content. The same structure (and
-            // the same surface convention) is used on both platforms; only the
-            // breakdown columns differ (see `breakdownSections`).
-            VStack(alignment: .leading, spacing: 20) {
-                DetailCard { header }
+            VStack(alignment: .leading, spacing: Space.blockGap) {
+                headerCard
                 if let destinationURL {
-                    DetailCard {
-                        LinkPreviewView(url: destinationURL)
-                    }
+                    linkPreviewCard(destinationURL)
                 }
-                DetailCard { summarySection }
-                DetailCard { VisitsChartCard(store: store) }
+                visitsCard
+                VisitsChartCard(store: store)
                 breakdownSections
             }
-            .padding()
+            .padding(.horizontal, Space.screenEdge)
+            .padding(.vertical, Space.blockGap)
             .frame(maxWidth: contentMaxWidth, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .center)
         }
+        .canvasBackground()
         .navigationTitle(navigationTitle)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -138,59 +162,179 @@ struct DetailScreen: View {
         Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })
     }
 
-    // MARK: - Header
+    /// The Copy tile: copies the short URL (the same thing every other copy
+    /// path copies) and swaps its icon to a checkmark for ~1.2s, like
+    /// ``CopyButton``.
+    private func copyFromTile() {
+        LinkActions.copyShortURL(shortURL)
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+        withAnimation(.easeInOut(duration: 0.15)) { didCopyFromTile = true }
+        copyResetTask?.cancel()
+        copyResetTask = Task {
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeInOut(duration: 0.2)) { didCopyFromTile = false }
+        }
+    }
 
-    private var header: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(headerTitle)
-                .font(.title2.weight(.semibold))
-                .lineLimit(3)
+    // MARK: - Header card
 
-            HStack(spacing: 8) {
-                Text(shortURL.shortUrl)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                CopyButton(value: shortURL.shortUrl, label: "Copy short URL")
+    private var headerCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(headerTitle)
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(Palette.textPrimary)
+                    .lineLimit(3)
+                    .padding(.horizontal, Space.cardInset)
+                    .padding(.top, 16)
+                    .padding(.bottom, 4)
+
+                shortURLRow
+                CardHairline()
+                destinationRow
+                CardHairline()
+                tagsBand
+                actionRow
             }
+        }
+    }
 
-            if let destinationURL {
-                // Opens the *destination* in the system browser — never the short
-                // URL, so we don't record a visit just by previewing the link.
-                Button {
-                    openURL(destinationURL)
-                } label: {
-                    Label("Open in browser", systemImage: "safari")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
+    /// The short URL with its copy button. The button's 44 pt target is pulled
+    /// in so its glyph, not its tap area, lines up with the card's text edge.
+    private var shortURLRow: some View {
+        HStack(spacing: Space.tight) {
+            Text(shortURL.shortUrl)
+                .font(.body.weight(.medium))
+                .foregroundStyle(Palette.accentText)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+            Spacer(minLength: 0)
+            CopyButton(value: shortURL.shortUrl, label: "Copy short URL", targetSide: 44)
+        }
+        .frame(minHeight: Space.row)
+        .padding(.leading, Space.cardInset)
+        .padding(.trailing, Space.cardInset - 11)
+    }
+
+    /// The destination. Tapping opens the *destination* in the system browser —
+    /// never the short URL, so we don't record a visit just by previewing the
+    /// link.
+    @ViewBuilder
+    private var destinationRow: some View {
+        let row = HStack(spacing: Space.tight) {
+            Image(systemName: "arrow.up.right")
+                .font(.subheadline)
+                .foregroundStyle(Palette.accent)
+                .accessibilityHidden(true)
+            Text(shortURL.longUrl)
+                .font(.subheadline)
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+            Spacer(minLength: 0)
+        }
+        .frame(minHeight: 44)
+        .padding(.horizontal, Space.cardInset)
+        .contentShape(Rectangle())
+
+        if let destinationURL {
+            Button {
+                openURL(destinationURL)
+            } label: {
+                row
             }
+            .buttonStyle(.plain)
+            .help("Open in browser")
+            .accessibilityLabel("Open destination")
+            .accessibilityValue(shortURL.longUrl)
+        } else {
+            row
+        }
+    }
 
-            // Tags belong to the link's identity, so they live in the header card
-            // rather than as a floating row between sections.
+    /// Tags and the creation date. Tags belong to the link's identity, so they
+    /// live in the header card. With no tags, only the date.
+    private var tagsBand: some View {
+        HStack(alignment: .top, spacing: Space.tight) {
             if !shortURL.tags.isEmpty {
                 TagChipsView(tags: shortURL.tags, onSelectTag: onSelectTag)
-                    .padding(.top, 2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            Text("Created \(createdDate)")
+                .font(.footnote)
+                .foregroundStyle(Palette.textSecondary)
+                .lineLimit(1)
+                .fixedSize()
+                // Centre the date on the first row of 26 pt chips.
+                .frame(minHeight: 26)
+        }
+        .padding(.horizontal, Space.cardInset)
+        .padding(.vertical, Space.labelBand)
+    }
+
+    /// Copy, Share, Open. A fourth tile (QR code) is one more line here.
+    private var actionRow: some View {
+        HStack(spacing: Space.tight) {
+            ActionTile(didCopyFromTile ? "Copied" : "Copy",
+                       systemImage: didCopyFromTile ? "checkmark" : "doc.on.doc",
+                       action: copyFromTile)
+            if let shortLink = URL(string: shortURL.shortUrl) {
+                // `ShareLink` works in an ordinary view on both platforms (it
+                // is only ignored inside `.swipeActions`). Shares the short URL,
+                // like the list's share actions.
+                ShareLink(item: shortLink) {
+                    ActionTileLabel(title: "Share", systemImage: "square.and.arrow.up")
+                }
+                .buttonStyle(ActionTileButtonStyle())
+                .help("Share")
+            }
+            if let destinationURL {
+                ActionTile("Open", systemImage: "safari") {
+                    openURL(destinationURL)
+                }
+            }
+        }
+        .padding(.horizontal, Space.cardInset)
+        .padding(.bottom, Space.cardInset)
+    }
+
+    // MARK: - Link preview
+
+    /// The native preview fills its own card, clipped to the card's corners.
+    private func linkPreviewCard(_ url: URL) -> some View {
+        Card {
+            LinkPreviewView(url: url)
+                .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
+        }
+    }
+
+    // MARK: - Visits card (period + metric tiles + bot toggle)
+
+    /// Period control, the three metric tiles and the bot toggle share one card:
+    /// they all govern the same period/visits data.
+    private var visitsCard: some View {
+        Card("Visits") {
+            VStack(alignment: .leading, spacing: 0) {
+                periodPicker
+                    .padding(.horizontal, Space.cardInset)
+                metricTiles
+                    .padding(.horizontal, Space.cardInset)
+                    .padding(.top, Space.labelBand)
+                    .padding(.bottom, Space.cardInset)
+                CardHairline()
+                Toggle("Exclude bots", isOn: excludeBotsBinding)
+                    .font(.body)
+                    .foregroundStyle(Palette.textPrimary)
+                    .tint(Palette.accent)
+                    .frame(minHeight: Space.row)
+                    .padding(.horizontal, Space.cardInset)
             }
         }
     }
-
-    // MARK: - Summary (period + metric tiles + bot toggle)
-
-    /// Period control, the three metric tiles and the bot toggle share one card:
-    /// they all govern the same period/visits data, so grouping them reads as a
-    /// single control surface. The tiles are their own rounded sub-cards within.
-    private var summarySection: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            periodPicker
-            metricCards
-            Toggle("Exclude bots", isOn: excludeBotsBinding)
-                .font(.subheadline)
-        }
-    }
-
-    // MARK: - Period control
 
     private var periodPicker: some View {
         Picker("Period", selection: periodBinding) {
@@ -202,58 +346,75 @@ struct DetailScreen: View {
         .labelsHidden()
     }
 
-    // MARK: - Metric cards
-
-    private var metricCards: some View {
+    /// Lifetime figures from the link's summary over the selected period's.
+    /// The bot toggle doesn't affect these — the tiles always show the full
+    /// breakdown.
+    private var metricTiles: some View {
         let all = store.allTimeMetrics
         let period = store.periodMetrics
-        let label = store.period.label
+        let suffix = periodSuffix
         let loading = store.state == .loading
-        return HStack(spacing: 12) {
-            MetricCard(title: "Total", allTime: all.total, period: period.total,
-                       periodLabel: label, tint: .primary, isLoadingPeriod: loading)
-            MetricCard(title: "People", allTime: all.nonBots, period: period.nonBots,
-                       periodLabel: label, tint: .green, isLoadingPeriod: loading)
-            MetricCard(title: "Bots", allTime: all.bots, period: period.bots,
-                       periodLabel: label, tint: .secondary, isLoadingPeriod: loading)
+        return HStack(spacing: Space.tight) {
+            MetricTile(title: "Total", allTime: all.total, valueColor: Palette.textPrimary,
+                       period: period.total, periodSuffix: suffix, isLoadingPeriod: loading)
+            MetricTile(title: "People", allTime: all.nonBots, valueColor: Palette.accentText,
+                       period: period.nonBots, periodSuffix: suffix, isLoadingPeriod: loading)
+            MetricTile(title: "Bots", allTime: all.bots, valueColor: Palette.textSecondary,
+                       period: period.bots, periodSuffix: suffix, isLoadingPeriod: loading)
+        }
+    }
+
+    /// What follows the period figure on a metric tile: "449 in 30 days".
+    private var periodSuffix: String {
+        switch store.period {
+        case .last7Days: return "in 7 days"
+        case .last30Days: return "in 30 days"
+        case .allTime: return "all time"
         }
     }
 
     // MARK: - Breakdowns (countries + sources)
 
     /// The country and source breakdowns under the time chart. Shown only once
-    /// visits have loaded — while loading / empty / error the chart section
-    /// already carries the state, so we don't repeat it here. Both track the
-    /// period and the bot toggle through the store. macOS lays them out as two
-    /// side-by-side columns (the wider window has room); iPhone keeps the stack.
+    /// visits have loaded — while loading / empty / error the chart card
+    /// already carries the state. Both track the period and the bot toggle
+    /// through the store. macOS lays them out side by side; iPhone stacks them.
     @ViewBuilder
     private var breakdownSections: some View {
         if store.state == .loaded {
-            // Each breakdown gets its own card. On the wider macOS column they sit
-            // side by side (the cards stretch to fill each half); on the narrow
-            // iPhone they stack, picking up the same 20pt gap as the other cards.
             #if os(macOS)
-            HStack(alignment: .top, spacing: 20) {
-                DetailCard { countryBreakdown }
-                DetailCard { sourceBreakdown }
+            HStack(alignment: .top, spacing: Space.blockGap) {
+                countryBreakdown
+                sourceBreakdown
             }
             #else
-            DetailCard { countryBreakdown }
-            DetailCard { sourceBreakdown }
+            countryBreakdown
+            sourceBreakdown
             #endif
         }
     }
 
     private var countryBreakdown: some View {
-        CountryBreakdownList(title: "Countries",
-                             dateRange: store.windowDateRange,
-                             entries: store.countryCounts)
+        Card("Countries") {
+            BreakdownList(entries: store.countryCounts, showsFlags: true)
+        } accessory: {
+            breakdownDateRange
+        }
     }
 
     private var sourceBreakdown: some View {
-        RankedBarList(title: "Sources",
-                      dateRange: store.windowDateRange,
-                      entries: store.sourceCounts)
+        Card("Sources") {
+            BreakdownList(entries: store.sourceCounts, showsFlags: false)
+        } accessory: {
+            breakdownDateRange
+        }
+    }
+
+    private var breakdownDateRange: some View {
+        Text(store.windowDateRange)
+            .font(.footnote)
+            .foregroundStyle(Palette.textSecondary)
+            .lineLimit(1)
     }
 
     // MARK: - Derived values
@@ -280,6 +441,14 @@ struct DetailScreen: View {
         return shortURL.shortCode
     }
 
+    /// "Nov 3", or "Nov 3, 2024" when the link wasn't created this year.
+    private var createdDate: String {
+        let created = shortURL.dateCreated
+        let thisYear = Calendar.current.isDate(created, equalTo: Date(), toGranularity: .year)
+        let style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        return created.formatted(thisYear ? style : style.year())
+    }
+
     // MARK: - Bindings
 
     private var periodBinding: Binding<ShortURLDetailStore.Period> {
@@ -288,79 +457,6 @@ struct DetailScreen: View {
 
     private var excludeBotsBinding: Binding<Bool> {
         Binding(get: { store.excludeBots }, set: { store.excludeBots = $0 })
-    }
-}
-
-// MARK: - Section card
-
-/// A card surface for one detail section: the project's standard translucent
-/// fill — `Color.primary.opacity(0.06)`, the same convention the metric tiles
-/// already use and which compiles on both iOS and macOS (no `secondarySystem…`
-/// platform-only colors) — rounded to 12pt with 16pt of internal padding, and
-/// stretched to the column width. Every section on the screen is wrapped in one,
-/// so the page reads as evenly-spaced cards identically on both platforms.
-private struct DetailCard<Content: View>: View {
-    private let content: Content
-
-    init(@ViewBuilder content: () -> Content) {
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(16)
-            .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-    }
-}
-
-// MARK: - Metric card
-
-/// One metric: a big lifetime figure over a smaller per-period figure.
-///
-/// The lifetime number comes from the short URL's summary and never changes;
-/// the period number and its label track the selected period. The bot toggle
-/// does not affect these — cards always show the full breakdown.
-private struct MetricCard: View {
-    let title: String
-    let allTime: Int
-    let period: Int
-    let periodLabel: String
-    let tint: Color
-    let isLoadingPeriod: Bool
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-
-            Text(allTime, format: .number)
-                .font(.title.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(tint)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-
-            Divider()
-
-            HStack(spacing: 4) {
-                Text(period, format: .number)
-                    .monospacedDigit()
-                Text(periodLabel)
-                    .foregroundStyle(.secondary)
-            }
-            .font(.caption)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .redacted(reason: isLoadingPeriod ? .placeholder : [])
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        // A touch more opaque than the enclosing summary card (0.06) so the tiles
-        // read as raised sub-cards rather than blending into it. Same convention
-        // (translucent `primary`), so it compiles on iOS and macOS alike.
-        .background(Color.primary.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
     }
 }
 
@@ -376,8 +472,80 @@ private struct TagChipsView: View {
     var body: some View {
         FlowLayout(spacing: 6) {
             ForEach(tags, id: \.self) { tag in
-                TagChip(text: tag) { onSelectTag(tag) }
+                TagChip(text: tag, size: .regular) { onSelectTag(tag) }
             }
         }
     }
 }
+
+// MARK: - Preview
+
+#if DEBUG
+/// Made-up data for the canvas: a tagged link created five months ago with
+/// mixed people and bot traffic from a few countries and sources. The store is
+/// seeded, so the screen never talks to a server.
+private enum DetailScreenPreviewData {
+    @MainActor
+    static func screen() -> DetailScreen {
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let created = calendar.date(byAdding: .day, value: -150, to: today) ?? today
+        let countries: [(code: String?, name: String?)] = [
+            ("DE", "Germany"), ("US", "United States"), ("DE", "Germany"),
+            ("FR", "France"), (nil, nil), ("NL", "Netherlands"), ("DE", "Germany"),
+        ]
+        let referers: [String?] = [nil, "https://news.ycombinator.com/item", nil,
+                                   "https://mastodon.social/@someone", "https://www.google.com/"]
+
+        var visits: [Visit] = []
+        for offset in 0...150 {
+            guard let date = calendar.date(byAdding: .day, value: offset, to: created) else { continue }
+            let count = max(0, 2 + (offset * 7) % 6 - (offset % 9 == 0 ? 2 : 0) + (offset > 120 ? 3 : 0))
+            for index in 0..<count {
+                let country = countries[(offset + index) % countries.count]
+                let location = country.code == nil
+                    ? nil
+                    : Visit.VisitLocation(countryCode: country.code, countryName: country.name)
+                visits.append(Visit(referer: referers[(offset * 3 + index) % referers.count],
+                                    date: date,
+                                    potentialBot: index % 4 == 3,
+                                    visitLocation: location))
+            }
+        }
+        let bots = visits.filter(\.potentialBot).count
+        let shortURL = ShortURL(
+            shortCode: "launch",
+            shortUrl: "https://s.example/launch",
+            longUrl: "https://example.com/blog/2026/introducing-the-new-shlinkly",
+            dateCreated: created,
+            visitsSummary: VisitsSummary(total: visits.count, nonBots: visits.count - bots, bots: bots),
+            title: "Introducing the new Shlinkly",
+            tags: ["launch", "blog", "newsletter"]
+        )
+        let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
+        return DetailScreen(
+            store: .preview(shortURL: shortURL, visits: visits, period: .last30Days, calendar: calendar),
+            client: client,
+            listStore: ShortURLListStore(client: client),
+            tagsStore: TagsStore(client: client),
+            loadsOnAppear: false,
+            onSelectTag: { _ in },
+            onDeleted: {}
+        )
+    }
+}
+
+#Preview("Detail, light") {
+    NavigationStack {
+        DetailScreenPreviewData.screen()
+    }
+    .preferredColorScheme(.light)
+}
+
+#Preview("Detail, dark") {
+    NavigationStack {
+        DetailScreenPreviewData.screen()
+    }
+    .preferredColorScheme(.dark)
+}
+#endif
