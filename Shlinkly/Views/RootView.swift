@@ -35,14 +35,15 @@ struct RootView: View {
                 )
             }
         }
+        #if os(iOS)
+        // The Mac has its own Settings window (the `Settings` scene).
         .sheet(isPresented: $showSettings) {
             SettingsView()
                 .brandTint()
         }
-        #if os(macOS)
-        // The translucent matte window: the desktop blurred behind it, under a
-        // soft lavender wash. Every column sits on it; nothing on the Mac paints
-        // an opaque canvas.
+        #else
+        // `.win`: one continuous surface. The desktop blurred behind the
+        // window under the `--win` wash; every column sits on it.
         .background { WindowBackdrop() }
         #endif
         // Hosted here, above the per-client ``ConfiguredRoot``, so the pill
@@ -92,11 +93,12 @@ private struct ConfiguredRoot: View {
     var body: some View {
         #if os(macOS)
         NavigationSplitView {
+            // 216 pt panel plus its 8 pt inset (`MacMain`).
             TagSidebar(listStore: listStore, tagsStore: tagsStore)
-                .navigationSplitViewColumnWidth(min: 200, ideal: 220, max: 280)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
         } content: {
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, detailDismissCount: detailDismissCount, showSettings: $showSettings)
-                .navigationSplitViewColumnWidth(min: 320, ideal: 360)
+                .navigationSplitViewColumnWidth(min: 300, ideal: 330)
         } detail: {
             if let selection {
                 destination(selection)
@@ -104,6 +106,12 @@ private struct ConfiguredRoot: View {
                 DetailPlaceholder()
             }
         }
+        // The title bar as drawn: no system title or sidebar button, no
+        // toolbar background (one continuous surface). The columns draw their
+        // own title-bar contents as toolbar items.
+        .removingToolbarTitle()
+        .toolbar(removing: .sidebarToggle)
+        .toolbarBackground(.hidden, for: .windowToolbar)
         .onChange(of: listStore.items.first?.id) { _, _ in
             autoSelectFirstIfNeeded()
         }
@@ -238,16 +246,14 @@ private struct ConfiguredRoot: View {
 }
 
 #if os(macOS)
-/// The macOS sidebar: "All Links" (clears the filter) above the full tag list.
-/// Selecting a row drives the *same* ``ShortURLListStore/activeTag`` the middle
-/// list and the detail chips use, so the whole window stays in sync — selecting
-/// a tag here filters the content column, and "All Links" resets it. The
-/// highlight is read straight from `activeTag`, so a filter set elsewhere (a
-/// row chip, a detail tap) reflects back as the selected sidebar row.
+/// The macOS sidebar (`.msidebar`): "All Links" (clears the filter) above the
+/// "Tags" label and the full tag list, as `.mrow` rows. Selecting a row drives
+/// the *same* ``ShortURLListStore/activeTag`` the middle list and the detail
+/// chips use, so the whole window stays in sync. The highlight is read straight
+/// from `activeTag`, so a filter set elsewhere reflects back here.
 ///
-/// Not a `List`, for the same reason as the link list: the system highlight is
-/// gray or the system accent. Rows draw the soft lavender ``SelectionPill``;
-/// ↑/↓ move the selection while the sidebar has focus.
+/// Not a `List`: the system highlight is gray or the system accent; the layout
+/// draws a `--sel` pill. ↑/↓ move the selection while the sidebar has focus.
 private struct TagSidebar: View {
     let listStore: ShortURLListStore
     let tagsStore: TagsStore
@@ -263,27 +269,31 @@ private struct TagSidebar: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 2) {
-                SidebarRow(title: "All Links", systemImage: "link", isSelected: current == .allLinks) {
-                    select(.allLinks)
-                }
-
-                if !tagsStore.tags.isEmpty {
-                    Text("Tags")
-                        .font(.footnote.weight(.medium))
-                        .foregroundStyle(Palette.textSecondary)
-                        .padding(.horizontal, 20)
-                        .padding(.top, Space.footBand)
-                        .padding(.bottom, Space.hairline)
-                        .accessibilityAddTraits(.isHeader)
-                    ForEach(tagsStore.tags, id: \.self) { tag in
-                        SidebarRow(title: tag, systemImage: "tag", isSelected: current == .tag(tag)) {
-                            select(.tag(tag))
-                        }
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 2) {
+                    SidebarRow(title: "All Links", systemImage: "link", isSelected: current == .allLinks) {
+                        select(.allLinks)
                     }
                 }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+
+                if !tagsStore.tags.isEmpty {
+                    MacLabel("Tags")
+                        .padding(.top, 14)
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 6)
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(tagsStore.tags, id: \.self) { tag in
+                            SidebarRow(title: tag, systemImage: "tag", isSelected: current == .tag(tag)) {
+                                select(.tag(tag))
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 8)
+                }
             }
-            .padding(.vertical, Space.tight)
+            .padding(.bottom, 8)
         }
         .focusable()
         .focused($isFocused)
@@ -325,20 +335,39 @@ private struct TagSidebar: View {
 }
 
 private extension View {
-    /// The sidebar column's background. From macOS 26: none at all, so the
-    /// system's floating, frosted Liquid Glass sidebar shows (the window's wash
-    /// sits under it). Below 26: the sidebar material with a lavender wash.
+    /// Hides the system window title, which the layout replaces with the list
+    /// column's own "Links". The API exists from macOS 15; on 14 the system
+    /// title stays.
+    @ViewBuilder
+    func removingToolbarTitle() -> some View {
+        if #available(macOS 15, *) {
+            toolbar(removing: .title)
+        } else {
+            self
+        }
+    }
+
+    /// The sidebar column's background. From macOS 26: none, so the system's
+    /// floating glass sidebar is the drawn panel. Below 26: the window surface
+    /// with the `.msidebar` panel on it.
     @ViewBuilder
     func sidebarBackground() -> some View {
         if #available(macOS 26, *) {
             scrollContentBackground(.hidden)
         } else {
-            background { SidebarBackdrop() }
+            background {
+                ZStack {
+                    WindowBackdrop()
+                    SidebarPanel()
+                        .ignoresSafeArea()
+                }
+            }
         }
     }
 }
 
-/// One sidebar row: a brand-tinted symbol and the title on the selection pill.
+/// One `.mrow` sidebar row: a 15 pt glyph in `--brand-text` (`--sel-text` when
+/// selected) and the 13 pt title (medium when selected), 6 pt / 10 pt in.
 private struct SidebarRow: View {
     let title: String
     let systemImage: String
@@ -347,21 +376,22 @@ private struct SidebarRow: View {
     @State private var isHovering = false
 
     var body: some View {
-        HStack(spacing: Space.tight) {
+        HStack(alignment: .center, spacing: 10) {
             Image(systemName: systemImage)
-                .foregroundStyle(Palette.accent)
-                .frame(width: 18)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(isSelected ? Palette.selText : Palette.brand)
+                .frame(width: 15, height: 15)
                 .accessibilityHidden(true)
             Text(title)
-                .foregroundStyle(isSelected ? Palette.accentText : Palette.textPrimary)
+                .layoutFont(13, isSelected ? .medium : .regular)
+                .foregroundStyle(isSelected ? Palette.selText : Palette.text)
                 .lineLimit(1)
                 .truncationMode(.tail)
             Spacer(minLength: 0)
         }
-        .font(.body)
-        .padding(.horizontal, 20)
-        .frame(minHeight: 28)
-        .background { SelectionPill(isSelected: isSelected, isHovering: isHovering) }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background { MacRowBackground(isSelected: isSelected, isHovering: isHovering) }
         .contentShape(Rectangle())
         .onTapGesture(perform: action)
         .onHover { isHovering = $0 }
@@ -371,14 +401,62 @@ private struct SidebarRow: View {
     }
 }
 
-/// Detail stub shown until a link is selected.
+/// Detail stub shown until a link is selected (not drawn; kept, in the
+/// layout's text colors).
 private struct DetailPlaceholder: View {
     var body: some View {
-        ContentUnavailableView(
-            "Select a link",
-            systemImage: "link",
-            description: Text("Choose a short URL to see its details.")
-        )
+        ContentUnavailableView {
+            Label("Select a link", systemImage: "link")
+                .foregroundStyle(Palette.text)
+        } description: {
+            Text("Choose a short URL to see its details.")
+                .foregroundStyle(Palette.text2)
+        }
     }
+}
+#endif
+
+// MARK: - Preview
+
+#if DEBUG && os(macOS)
+/// The whole Mac window as `MacMain` draws it: sidebar, list column and detail
+/// column, from seeded stores (nothing talks to a server).
+private struct MacMainPreview: View {
+    @State private var listStore = ShortURLListStore.preview(items: ShortURLListScreenPreview.items)
+    @State private var tagsStore = TagsStore.preview(tags: ["books", "library", "test", "website"])
+    @State private var appModel = AppModel(spotlight: nil)
+    @State private var selection: Route? = .shortURLDetail(ShortURLListScreenPreview.items[1])
+
+    var body: some View {
+        let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
+        NavigationSplitView {
+            TagSidebar(listStore: listStore, tagsStore: tagsStore)
+                .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
+        } content: {
+            ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection,
+                               detailDismissCount: 0, showSettings: .constant(false))
+                .skippingInitialLoad()
+                .navigationSplitViewColumnWidth(min: 300, ideal: 330)
+        } detail: {
+            DetailScreenPreviewData.screen(period: .allTime)
+        }
+        .removingToolbarTitle()
+        .toolbar(removing: .sidebarToggle)
+        .toolbarBackground(.hidden, for: .windowToolbar)
+        .background { WindowBackdrop() }
+        .environment(appModel)
+        .brandTint()
+        .frame(width: 1280, height: 780)
+    }
+}
+
+#Preview("MacMain light") {
+    MacMainPreview()
+        .preferredColorScheme(.light)
+}
+
+#Preview("MacMain dark") {
+    MacMainPreview()
+        .preferredColorScheme(.dark)
 }
 #endif

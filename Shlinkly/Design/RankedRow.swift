@@ -6,12 +6,12 @@
 import SwiftUI
 import ShlinklyCore
 
-/// One row of a ranked breakdown (Countries, Sources): an optional leading
-/// flag, the name and the trailing count, with a 4 pt bar under the text
-/// showing the entry's share of the top entry.
+/// `.rank`: one row of the Countries and Sources cards. The flag (countries
+/// only) and name, the count trailing in `--text2`, and under them a 4 pt
+/// `--track` with a `--bar` fill at the entry's share of the top entry.
 ///
-/// Rows flagged ``ShortURLDetailStore/RankedEntry/isDimmed`` (the "Unknown"
-/// country bucket) recede: secondary text and a ``Palette/seriesBots`` fill.
+/// The dimmed "Unknown" country reads entirely in `--text2` with a `--bar-bots`
+/// fill. 15 pt on the iPhone, 13 pt on the Mac.
 struct RankedRow: View {
     let entry: ShortURLDetailStore.RankedEntry
     /// The top entry's count; the bar scales against it. At least 1.
@@ -19,60 +19,49 @@ struct RankedRow: View {
     /// Countries show a flag; Sources don't.
     let showsFlag: Bool
 
-    /// 48 pt on iOS, 38 pt on macOS. A minimum, so large text can grow it.
-    private static var height: CGFloat {
-        #if os(macOS)
-        38
-        #else
-        48
-        #endif
-    }
-
     private var fraction: CGFloat {
         CGFloat(entry.count) / CGFloat(max(maxCount, 1))
     }
 
+    private static var fontSize: CGFloat {
+        #if os(macOS)
+        13
+        #else
+        15
+        #endif
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                if showsFlag {
-                    Text(Self.flagEmoji(for: entry.code))
-                        .font(.body)
-                        .lineLimit(1)
-                        .accessibilityHidden(true)
-                }
-                Text(entry.label)
-                    .font(.subheadline)
+            HStack(spacing: 8) {
+                Text(showsFlag ? "\(Self.flagEmoji(for: entry.code)) \(entry.label)" : entry.label)
+                    .foregroundStyle(entry.isDimmed ? Palette.text2 : Palette.text)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .foregroundStyle(entry.isDimmed ? Palette.textSecondary : Palette.textPrimary)
-                Spacer(minLength: Space.tight)
+                Spacer(minLength: 8)
                 Text(entry.count, format: .number)
-                    .font(.subheadline)
                     .monospacedDigit()
-                    .foregroundStyle(Palette.textSecondary)
+                    .foregroundStyle(Palette.text2)
             }
+            .layoutFont(Self.fontSize)
             bar
         }
-        .frame(minHeight: Self.height)
-        .padding(.horizontal, Space.cardInset)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(entry.label): \(entry.count) visits")
     }
 
-    /// The share bar: a ``Palette/sunken`` track with a proportional fill, both
-    /// capsule-rounded. A small floor keeps a non-zero count visible.
     private var bar: some View {
-        Capsule()
-            .fill(Palette.sunken)
+        RoundedRectangle(cornerRadius: 2, style: .continuous)
+            .fill(Palette.track)
             .frame(height: 4)
             .overlay(alignment: .leading) {
                 GeometryReader { geometry in
-                    Capsule()
-                        .fill(entry.isDimmed ? Palette.seriesBots : Palette.seriesPeople)
-                        .frame(width: max(geometry.size.width * fraction, entry.count > 0 ? 4 : 0))
+                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                        .fill(entry.isDimmed ? AnyShapeStyle(Palette.barBots) : AnyShapeStyle(Palette.bar))
+                        .frame(width: geometry.size.width * fraction)
                 }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 2, style: .continuous))
             .accessibilityHidden(true)
     }
 

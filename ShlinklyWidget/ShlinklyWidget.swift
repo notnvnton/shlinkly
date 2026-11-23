@@ -19,10 +19,8 @@ struct ShlinklyWidget: Widget {
                 // iOS 17+ requires the widget's background to be declared via
                 // `containerBackground` so the system knows what to strip in
                 // StandBy / Lock Screen contexts. Without it the content doesn't
-                // render at all on-device. `.fill.tertiary` is the neutral,
-                // theme-adaptive system fill; the brand accent stays on the
-                // glyphs and button underlays only.
-                .containerBackground(.fill.tertiary, for: .widget)
+                // render at all on-device. `Widgets.html`: `#FFFFFF` / `#1F1E25`.
+                .containerBackground(WidgetTheme.background, for: .widget)
         }
         .configurationDisplayName("Quick Create")
         .description("Create a new short link, or one from your clipboard.")
@@ -57,14 +55,6 @@ private enum WidgetDestination {
     static let createFromClipboard = URL(string: "shlinkly://create?source=clipboard")!
 }
 
-private extension ShapeStyle where Self == Color {
-    /// The brand purple. Local to the widget: its process shares no asset
-    /// catalogue with the app, and a launcher isn't worth an asset dependency.
-    /// Mirrors the app's light `AccentColor` (#5249A8) until build 2 moves the
-    /// widget onto shared tokens.
-    static var brand: Color { Color(red: 0.322, green: 0.286, blue: 0.659) }
-}
-
 struct LauncherView: View {
     @Environment(\.widgetFamily) private var family
 
@@ -83,61 +73,80 @@ struct LauncherView: View {
     }
 }
 
+/// `Widgets.html`, small: the mark at the top, "New link" (16 pt semibold) at
+/// the bottom. The artboard's "or from clipboard" line is left out: tapping the
+/// small widget opens a blank form, so the line would promise something it
+/// doesn't do.
 private struct SmallTile: View {
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Image(systemName: "plus")
-                .font(.system(size: 28, weight: .semibold))
+        VStack(alignment: .leading, spacing: 0) {
+            WidgetBrandMark()
             Spacer(minLength: 0)
             Text("New link")
-                .font(.headline)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(WidgetTheme.text)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-        .foregroundStyle(Color.brand)
     }
 }
 
+/// `Widgets.html`, medium: "Shlinkly" (13 pt semibold, `--brand-text`) over two
+/// tiles, 10 pt apart: "New link" on `--brand-fill` and "From clipboard" on
+/// `--pastel`, each with its 15 pt semibold label at the bottom-left. The
+/// artboard's "· host" isn't shown: the widget holds no data, so it can't know
+/// the active server.
 private struct MediumTile: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Shlinkly", systemImage: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-
+            Text("Shlinkly")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(WidgetTheme.brand)
             HStack(spacing: 10) {
                 Link(destination: WidgetDestination.create) {
-                    ActionTile(systemImage: "plus", title: "New link")
+                    LaunchTile(title: "New link", fill: AnyShapeStyle(WidgetTheme.brandFill),
+                               textColor: WidgetTheme.onBrand)
                 }
                 Link(destination: WidgetDestination.createFromClipboard) {
-                    ActionTile(systemImage: "doc.on.clipboard", title: "From clipboard")
+                    LaunchTile(title: "From clipboard", fill: AnyShapeStyle(WidgetTheme.pastel),
+                               textColor: WidgetTheme.pastelText)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 }
 
-/// One of the medium widget's two buttons. `contentShape` so the whole tile is
-/// tappable, not just the glyph and text.
-private struct ActionTile: View {
-    let systemImage: String
+/// One of the medium widget's two tiles: radius 14, 12 pt in, the label at the
+/// bottom-left. `contentShape` so the whole tile is tappable.
+private struct LaunchTile: View {
     let title: String
+    let fill: AnyShapeStyle
+    let textColor: Color
 
     var body: some View {
-        VStack(spacing: 6) {
-            Image(systemName: systemImage)
-                .font(.title3.weight(.semibold))
-            Text(title)
-                .font(.caption.weight(.medium))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .foregroundStyle(Color.brand)
-        .background(Color.brand.opacity(0.12), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        let shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
+        Text(title)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(textColor)
+            .lineLimit(1)
+            .minimumScaleFactor(0.8)
+            .padding(12)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomLeading)
+            .background(fill, in: shape)
+            .contentShape(shape)
     }
+}
+
+#Preview("Widgets small", as: .systemSmall) {
+    ShlinklyWidget()
+} timeline: {
+    LauncherEntry(date: .now)
+}
+
+#Preview("Widgets medium", as: .systemMedium) {
+    ShlinklyWidget()
+} timeline: {
+    LauncherEntry(date: .now)
 }
 
 @main

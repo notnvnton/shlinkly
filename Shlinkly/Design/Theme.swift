@@ -10,179 +10,151 @@ import AppKit
 import UIKit
 #endif
 
-// The "Lavender & Matte" design tokens: spacing, corner radii and colors, in
-// one place. Colors come from the asset catalog (each with a dark appearance);
-// the values the catalog can't hold (gradients, and the macOS translucent
-// surfaces, which differ from iOS) live here.
+// Shlinkly 3.0, "Holds style": every token of the approved layout v3
+// (`theme.css`, `.root` light and `.root.dark` dark), with the exact values.
 //
-// The brand color is ``Palette/accent``, read from the `Brand` colorset. It is
-// never `Color.accentColor`: on macOS SwiftUI honours the `AccentColor` asset
-// only when the user picks "Multicolor" as the system accent, so anything that
-// reads it turns system blue on most Macs. Scene and sheet roots apply it as
-// the tint with ``SwiftUICore/View/brandTint()``.
+// Colors that are opaque in both appearances are asset-catalog colorsets (each
+// with a dark appearance). Translucent layers and gradients are constants here.
+// The widget and the share extensions are separate targets: they carry a
+// minimal copy of the tokens they need (`WidgetTheme.swift`, `ShareTheme` in
+// `ShareCreateView.swift`), kept in step with this file.
 //
-// Typography uses semantic text styles only, so Dynamic Type keeps working:
-// headings `.semibold`, everything else `.regular` or `.medium`, numbers
-// `.monospacedDigit()`. No `.bold`.
+// Brand is ``Palette/brand`` (the `Brand` colorset, `--brand-text`), applied as
+// the tint at every scene and sheet root with ``SwiftUICore/View/brandTint()``.
+// It is never `Color.accentColor`: macOS honours the `AccentColor` asset only
+// when the system accent is "Multicolor".
 
-// MARK: - Spacing
-
-/// Spacing scale, in points. Comments give the iOS / macOS values.
-enum Space {
-    /// 4 / 4
-    static let hairline: CGFloat = 4
-    /// 8 / 8
-    static let tight: CGFloat = 8
-    /// 12 / 12. A card's group label has this much room above and below.
-    static let labelBand: CGFloat = 12
-    /// 14 / 14. Footnote band.
-    static let footBand: CGFloat = 14
-    /// 16 / 16. Text inset from a card's edge.
-    static let cardInset: CGFloat = 16
-
-    #if os(macOS)
-    /// 20 / 28. Content inset from the screen's sides.
-    static let screenEdge: CGFloat = 28
-    /// 24 / 20. Gap between cards.
-    static let blockGap: CGFloat = 20
-    /// 52 / 40. One-line row.
-    static let row: CGFloat = 40
-    /// 64 / 52. Two-line row.
-    static let rowTwo: CGFloat = 52
-    #else
-    /// 20 / 28. Content inset from the screen's sides.
-    static let screenEdge: CGFloat = 20
-    /// 24 / 20. Gap between cards.
-    static let blockGap: CGFloat = 24
-    /// 52 / 40. One-line row.
-    static let row: CGFloat = 52
-    /// 64 / 52. Two-line row.
-    static let rowTwo: CGFloat = 64
-    #endif
-}
-
-// MARK: - Corner radii
-
-/// Corner radii, in points (continuous corners). Chips are a `Capsule`.
-enum Radius {
-    #if os(macOS)
-    /// 16 / 14
-    static let card: CGFloat = 14
-    /// 12 / 10
-    static let tile: CGFloat = 10
-    /// 10 / 7
-    static let control: CGFloat = 7
-    #else
-    /// 16 / 14
-    static let card: CGFloat = 16
-    /// 12 / 10
-    static let tile: CGFloat = 12
-    /// 10 / 7
-    static let control: CGFloat = 10
-    #endif
-}
-
-// MARK: - Colors
-
-/// Named colors from the asset catalog. Every one adapts to light and dark.
 enum Palette {
-    /// Icons, links, the tint. The `Brand` colorset (same values as
-    /// `AccentColor`, which only iOS system controls still read).
-    static let accent = Color("Brand")
-    /// Screen background (the flat fallback; see ``ThemedCanvas``).
-    static let canvas = Color("Canvas")
-    /// Cards, the chart callout.
-    static let surface = Color("Surface")
-    /// Tiles inside cards, bar tracks. Translucent on macOS, so the window's
-    /// wash shows through.
-    #if os(macOS)
-    static let sunken = Color(light: rgba(241, 239, 248, 0.9), dark: rgba(255, 255, 255, 0.05))
-    #else
-    static let sunken = Color("Sunken")
-    #endif
+    // MARK: Colorsets (opaque in light and dark)
 
-    /// The 1 pt card outline.
-    static let cardBorder = Color("CardBorder")
-    /// Separators inside cards, chart grid lines.
-    static let hairline = Color("Hairline")
-    /// Primary text.
-    static let textPrimary = Color("TextPrimary")
-    /// Secondary text, group labels.
-    static let textSecondary = Color("TextSecondary")
-    /// Text on ``accentSoft``, the short URL.
-    static let accentText = Color("AccentText")
-    /// Chips, tiles' pastel fill.
-    static let accentSoft = Color("AccentSoft")
-    /// Primary button fill (dark mode draws ``Gradients/buttonFillDark``).
-    static let buttonFill = Color("ButtonFill")
-    /// Chart and breakdown bars.
-    static let seriesPeople = Color("SeriesPeople")
-    /// The dimmed "Unknown" bars of the ranked breakdowns.
-    static let seriesBots = Color("SeriesBots")
+    /// `--brand-text`: links, icons, the tint.
+    static let brand = Color("Brand")
+    /// `--text`, also `--btn2-text`.
+    static let text = Color("Text")
+    /// `--text2`.
+    static let text2 = Color("Text2")
+    /// `--on-brand`: text on ``brandFill``.
+    static let onBrand = Color("OnBrand")
+    /// `--pastel-text`.
+    static let pastelText = Color("PastelText")
+    /// `--npastel-text`.
+    static let npastelText = Color("NPastelText")
+    /// `--seg-text`: unselected segment labels.
+    static let segText = Color("SegText")
+    /// `--chip-on-text`.
+    static let chipOnText = Color("ChipOnText")
+    /// `--switch-on`.
+    static let switchOn = Color("SwitchOn")
+    /// `--danger`.
+    static let danger = Color("Danger")
+    /// `--ok`: the status dot.
+    static let ok = Color("Ok")
+    /// `--sel-text`: text on a selected `.mrow`.
+    static let selText = Color("SelText")
+    /// `--bg-solid`.
+    static let bgSolid = Color("BgSolid")
+    /// `.sheet` background (`#F7F6F9` light, `--bg-solid` dark).
+    static let sheetBg = Color("SheetBg")
+    /// `.callout` background (`--card` light, `#2B2A33` dark).
+    static let calloutBg = Color("CalloutBg")
 
-    /// The visits chart's columns: people as a soft brand gradient, top to
-    /// bottom; bots as the same hue, translucent, above them — the empty part
-    /// of a glass tube filled to the people level.
-    enum Bars {
-        static let peopleTop = Color(light: hex(0x7A72CC), dark: hex(0xC4BEF0))
-        static let peopleBottom = Color(light: hex(0x5249A8), dark: hex(0x9C94E0))
-        static let bots = Color(light: hex(0x5249A8, alpha: 0.22), dark: hex(0xB3ACE6, alpha: 0.24))
-    }
+    // MARK: Translucent layers
 
-    /// Dark-mode-only gradients. Light mode has no gradients anywhere.
-    enum Gradients {
-        /// The dark canvas: `#1E1D26` at the top fading to `#141318` at 55%
-        /// of the height, flat below.
-        static let canvasDark = LinearGradient(
-            stops: [
-                .init(color: Color(red: 0x1E / 255, green: 0x1D / 255, blue: 0x26 / 255), location: 0),
-                .init(color: Color(red: 0x14 / 255, green: 0x13 / 255, blue: 0x18 / 255), location: 0.55),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+    /// `--card`.
+    static let card = Color(light: hex(0xFFFFFF), dark: rgba(255, 255, 255, 0.055))
+    /// `--card-border`.
+    static let cardBorder = Color(light: hex(0xE4E4EA), dark: rgba(255, 255, 255, 0.06))
+    /// `--sep`.
+    static let sep = Color(light: hex(0xECECF1), dark: rgba(255, 255, 255, 0.07))
+    /// `--npastel`.
+    static let npastel = Color(light: hex(0xEEEDF2), dark: rgba(255, 255, 255, 0.06))
+    /// `--seg-track`.
+    static let segTrack = Color(light: hex(0xE7E7ED), dark: rgba(255, 255, 255, 0.06))
+    /// `--seg-thumb`.
+    static let segThumb = Color(light: hex(0xFFFFFF), dark: rgba(255, 255, 255, 0.14))
+    /// `--btn2-border`.
+    static let btn2Border = Color(light: rgba(22, 21, 28, 0.06), dark: rgba(255, 255, 255, 0.06))
+    /// `--mbtn-border`.
+    static let mbtnBorder = Color(light: hex(0xD9D9E1), dark: rgba(255, 255, 255, 0.06))
+    /// `--switch-off` (the system draws a switch's off state; kept for reference).
+    static let switchOff = Color(light: hex(0xE3E3E9), dark: rgba(255, 255, 255, 0.14))
+    /// `--bar-bots`: the bots part of a chart column, the "Unknown" rank bar.
+    static let barBots = Color(light: rgba(119, 112, 194, 0.22), dark: rgba(163, 157, 226, 0.22))
+    /// `--track`: the rank bars' track.
+    static let track = Color(light: hex(0xEFEEF4), dark: rgba(255, 255, 255, 0.07))
+    /// `--win`: the Mac window's wash over the behind-window blur.
+    static let win = Color(light: rgba(244, 242, 247, 0.84), dark: rgba(34, 33, 41, 0.86))
+    /// `--sidebar`: the floating sidebar panel below macOS 26.
+    static let sidebar = Color(light: rgba(255, 255, 255, 0.46), dark: rgba(255, 255, 255, 0.05))
+    /// `--sidebar-edge`.
+    static let sidebarEdge = Color(light: rgba(255, 255, 255, 0.70), dark: rgba(255, 255, 255, 0.08))
+    /// `--mcard`.
+    static let mcard = Color(light: rgba(255, 255, 255, 0.78), dark: rgba(255, 255, 255, 0.05))
+    /// `--mcard-border`.
+    static let mcardBorder = Color(light: rgba(22, 21, 28, 0.07), dark: rgba(255, 255, 255, 0.06))
+    /// `--sel`: a selected `.mrow`.
+    static let sel = Color(light: hex(0xE3E0F5), dark: rgba(169, 163, 230, 0.18))
 
-        /// The dark primary button: `#5A5486` to `#47426B`, top to bottom.
-        static let buttonFillDark = LinearGradient(
-            colors: [
-                Color(red: 0x5A / 255, green: 0x54 / 255, blue: 0x86 / 255),
-                Color(red: 0x47 / 255, green: 0x42 / 255, blue: 0x6B / 255),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+    // MARK: Gradients (top to bottom)
+
+    /// `--bg`: flat `#F5F5F8` in light; `#25232E` → `#18171D` (42%) → `#111014`
+    /// in dark.
+    static let bg = LinearGradient(
+        stops: [
+            .init(color: Color(light: hex(0xF5F5F8), dark: hex(0x25232E)), location: 0),
+            .init(color: Color(light: hex(0xF5F5F8), dark: hex(0x18171D)), location: 0.42),
+            .init(color: Color(light: hex(0xF5F5F8), dark: hex(0x111014)), location: 1),
+        ],
+        startPoint: .top, endPoint: .bottom
+    )
+    /// `--brand-fill`.
+    static let brandFill = vertical(light: (hex(0x554D9F), hex(0x433C8C)), dark: (hex(0x575282), hex(0x423E62)))
+    /// `--pastel`: flat `#E6E4F5` in light, `#3D3A5C` → `#312F48` in dark.
+    static let pastel = vertical(light: (hex(0xE6E4F5), hex(0xE6E4F5)), dark: (hex(0x3D3A5C), hex(0x312F48)))
+    /// `--btn2-bg`.
+    static let btn2Fill = vertical(light: (hex(0xEFEEF3), hex(0xE5E4EB)),
+                                   dark: (rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.07)))
+    /// `--mbtn-bg`.
+    static let mbtnFill = vertical(light: (hex(0xFFFFFF), hex(0xF4F3F7)),
+                                   dark: (rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.08)))
+    /// `--chip-on-bg`: flat `#16151C` in light, the brand gradient in dark.
+    static let chipOnFill = vertical(light: (hex(0x16151C), hex(0x16151C)), dark: (hex(0x575282), hex(0x423E62)))
+    /// `--bar`, top color.
+    static let barTop = Color(light: hex(0x9B95D8), dark: hex(0xA39DE2))
+    /// `--bar`, bottom color.
+    static let barBottom = Color(light: hex(0x7770C2), dark: hex(0x7C76C4))
+    /// `--bar`.
+    static let bar = LinearGradient(colors: [barTop, barBottom], startPoint: .top, endPoint: .bottom)
+
+    // MARK: Shadows
+
+    /// `--btn-shadow`, the inset part: a 1 pt top highlight.
+    static let btnHighlight = Color(light: rgba(255, 255, 255, 0.16), dark: rgba(255, 255, 255, 0.08))
+    /// `--btn-shadow`, the drop part: `0 1 2`.
+    static let btnDrop = Color(light: rgba(40, 30, 90, 0.16), dark: rgba(0, 0, 0, 0.30))
+    /// `--btn2-shadow`, the inset top highlight.
+    static let btn2Highlight = Color(light: rgba(255, 255, 255, 0.70), dark: rgba(255, 255, 255, 0.06))
+    /// `--btn2-shadow`, the inset 1 pt ring.
+    static let btn2Ring = Color(light: rgba(22, 21, 28, 0.06), dark: rgba(255, 255, 255, 0.05))
+
+    private static func vertical(light: (RGBA, RGBA), dark: (RGBA, RGBA)) -> LinearGradient {
+        LinearGradient(colors: [Color(light: light.0, dark: dark.0), Color(light: light.1, dark: dark.1)],
+                       startPoint: .top, endPoint: .bottom)
     }
 }
 
-// MARK: - Canvas
-
-/// The screen background: the flat ``Palette/canvas`` in light mode, the soft
-/// vertical fade in dark mode. Extends under the safe areas.
-struct ThemedCanvas: View {
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Group {
-            if colorScheme == .dark {
-                Palette.Gradients.canvasDark
-            } else {
-                Palette.canvas
-            }
-        }
-        .ignoresSafeArea()
-    }
-}
+// MARK: - Screen background
 
 extension View {
-    /// Puts the themed screen background (``ThemedCanvas``) behind the view.
-    /// On macOS it adds nothing: the window's translucent backdrop
-    /// (``WindowBackdrop``) is the screen background there.
+    /// The iPhone screen background, `--bg`, under the safe areas. On macOS the
+    /// window's translucent backdrop (``WindowBackdrop``) is the background, so
+    /// this adds nothing there.
     @ViewBuilder
     func canvasBackground() -> some View {
         #if os(macOS)
         self
         #else
-        background { ThemedCanvas() }
+        background { Palette.bg.ignoresSafeArea() }
         #endif
     }
 
@@ -190,75 +162,14 @@ extension View {
     /// every scene and of every sheet and popover (a sheet doesn't always
     /// inherit the tint on macOS).
     func brandTint() -> some View {
-        tint(Palette.accent)
+        tint(Palette.brand)
     }
 }
-
-// MARK: - macOS surfaces
-
-#if os(macOS)
-extension Palette {
-    /// The translucent matte window (approved mockup values).
-    enum Mac {
-        /// The wash over the window's behind-window blur, top-left to
-        /// bottom-right: lavender to a soft rose, clearly visible even over a
-        /// white window behind. `TextSecondary` on its light start stays above
-        /// 5:1 over any backdrop (6.1:1 over white, 5.0:1 over black).
-        static let windowWash = LinearGradient(
-            stops: [
-                .init(color: Color(light: rgba(233, 229, 248, 0.92), dark: rgba(44, 40, 62, 0.88)), location: 0),
-                .init(color: Color(light: rgba(240, 234, 246, 0.90), dark: rgba(36, 33, 50, 0.88)), location: 0.55),
-                .init(color: Color(light: rgba(246, 236, 240, 0.88), dark: rgba(40, 32, 40, 0.88)), location: 1),
-            ],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
-
-        /// The lavender wash over the sidebar material, top to bottom. Only
-        /// below macOS 26; from 26 the system's floating glass sidebar shows
-        /// through instead.
-        static let sidebarWash = LinearGradient(
-            colors: [
-                Color(light: rgba(232, 229, 243, 0.62), dark: rgba(50, 47, 66, 0.55)),
-                Color(light: rgba(237, 232, 241, 0.48), dark: rgba(40, 37, 52, 0.45)),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-
-        /// A card's soft vertical gradient (instead of flat white).
-        static let cardFill = LinearGradient(
-            colors: [
-                Color(light: rgba(255, 255, 255, 0.90), dark: rgba(50, 48, 62, 0.82)),
-                Color(light: rgba(252, 251, 254, 0.82), dark: rgba(42, 40, 52, 0.80)),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        /// A card's 0.5 pt edge.
-        static let cardBorder = Color(light: rgba(0, 0, 0, 0.08), dark: rgba(255, 255, 255, 0.08))
-        /// A card's shadow: light mode only.
-        static let cardShadow = Color(light: rgba(0, 0, 0, 0.05), dark: rgba(0, 0, 0, 0))
-
-        /// The soft lavender selection pill (list rows, sidebar), top to bottom.
-        static let selectionFill = LinearGradient(
-            colors: [
-                Color(light: rgba(234, 231, 248, 0.98), dark: rgba(179, 172, 230, 0.20)),
-                Color(light: rgba(226, 222, 244, 0.98), dark: rgba(179, 172, 230, 0.14)),
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        /// The selection pill's 0.5 pt edge: the brand color at 18%.
-        static let selectionEdge = Palette.accent.opacity(0.18)
-    }
-}
-#endif
 
 // MARK: - Color helpers
 
-/// An sRGB color as 0–255 channels and a 0–1 alpha, the way the mockup
-/// specifies them (`rgba(247,245,251,0.84)`).
+/// An sRGB color as 0–255 channels and a 0–1 alpha, the way `theme.css` writes
+/// them (`rgba(244,242,247,0.84)`).
 typealias RGBA = (red: Double, green: Double, blue: Double, alpha: Double)
 
 nonisolated func rgba(_ red: Double, _ green: Double, _ blue: Double, _ alpha: Double = 1) -> RGBA {

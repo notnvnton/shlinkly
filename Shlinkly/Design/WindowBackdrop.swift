@@ -8,67 +8,60 @@ import SwiftUI
 import AppKit
 
 /// An `NSVisualEffectView` that blurs what is *behind the window* (the desktop,
-/// other apps), following the window's active state. The same path on macOS
-/// 14.6 and later: `containerBackground(_:for: .window)` (macOS 15) can't pick
-/// the `.underWindowBackground` material.
+/// other apps), following the window's active state: the `.win` class's
+/// `backdrop-filter: blur(40px) saturate(160%)`.
 struct BehindWindowBlur: NSViewRepresentable {
-    var material: NSVisualEffectView.Material = .underWindowBackground
-
     func makeNSView(context: Context) -> NSVisualEffectView {
         let view = NSVisualEffectView()
         view.blendingMode = .behindWindow
         view.state = .followsWindowActiveState
-        view.material = material
+        view.material = .underWindowBackground
         return view
     }
 
-    func updateNSView(_ view: NSVisualEffectView, context: Context) {
-        view.material = material
-    }
+    func updateNSView(_ view: NSVisualEffectView, context: Context) {}
 }
 
-/// The translucent matte window: the behind-window blur with the soft lavender
-/// wash over it. The list and detail columns sit straight on it (no opaque
-/// canvas on macOS).
+/// `.win`: the Mac window as one continuous surface. The behind-window blur
+/// with the flat `--win` wash over it, under every column and the title bar.
 struct WindowBackdrop: View {
     var body: some View {
         ZStack {
             BehindWindowBlur()
-            Palette.Mac.windowWash
+            Palette.win
         }
         .ignoresSafeArea()
         .accessibilityHidden(true)
     }
 }
 
-/// The sidebar column: the system sidebar material with a lavender wash.
-struct SidebarBackdrop: View {
+/// `.msidebar` below macOS 26: the floating sidebar panel. `--sidebar`,
+/// radius 12, a 0.5 pt `--sidebar-edge` ring and `0 1 3` at 6%, inset 8 pt from
+/// the window's top, bottom and leading edges. From macOS 26 the system's own
+/// floating glass sidebar is that panel.
+struct SidebarPanel: View {
     var body: some View {
-        ZStack {
-            BehindWindowBlur(material: .sidebar)
-            Palette.Mac.sidebarWash
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
+        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
+        shape
+            .fill(Palette.sidebar)
+            .overlay { shape.strokeBorder(Palette.sidebarEdge, lineWidth: 0.5) }
+            .shadow(color: .black.opacity(0.06), radius: 1.5, y: 1)
+            .padding([.top, .bottom, .leading], 8)
+            .accessibilityHidden(true)
     }
 }
 
-/// The soft lavender selection pill behind a selected list or sidebar row:
-/// inset 8 pt from the column's sides, radius 8, with a 0.5 pt brand edge. A
-/// hovered unselected row shows it at 40%.
-struct SelectionPill: View {
+/// `.mrow.sel`: the pastel pill behind a selected Mac list or sidebar row,
+/// radius 8. A hovered row shows it at 40% (hover isn't drawn; it keeps the
+/// pre-v3 behavior in the layout's color).
+struct MacRowBackground: View {
     let isSelected: Bool
     let isHovering: Bool
 
     var body: some View {
-        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
-        shape
-            .fill(Palette.Mac.selectionFill)
-            .overlay(shape.strokeBorder(Palette.Mac.selectionEdge, lineWidth: 0.5))
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .fill(Palette.sel)
             .opacity(isSelected ? 1 : (isHovering ? 0.4 : 0))
-            .padding(.horizontal, 8)
-            .animation(.spring(duration: 0.22), value: isSelected)
-            .animation(.spring(duration: 0.22), value: isHovering)
             .accessibilityHidden(true)
     }
 }

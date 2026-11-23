@@ -5,51 +5,65 @@
 
 import SwiftUI
 
-/// One metric on a ``Palette/sunken`` tile: its title, the all-time figure,
-/// and a period line under it ("449 in 30 days"). With the "All" period the
-/// line would only repeat the figure, so it is hidden — but its room is kept,
-/// so every tile stays the same height.
+/// `.metric`: a metric tile, title and value only. Radius 10, 10 pt / 12 pt in.
+/// Total and Bots on `--npastel` with `--npastel-text`, People on `--pastel`
+/// with `--pastel-text`. The key is 12 pt medium; the value 22 pt semibold with
+/// tabular digits (18 pt in the Mac's horizontal rows).
 struct MetricTile: View {
+    enum Kind {
+        case total
+        case people
+        case bots
+    }
+
     let title: String
-    /// The lifetime figure, from the link's visit summary.
-    let allTime: Int
-    let valueColor: Color
-    /// The figure for the selected period.
-    let period: Int
-    /// What follows the period figure ("in 7 days"), or `nil` to hide the
-    /// line (the "All" period).
-    let periodSuffix: String?
-    /// Redacts the period line while the period's visits load.
-    let isLoadingPeriod: Bool
+    let value: Int
+    let kind: Kind
+    /// The Mac's Visits card lays each metric out as one row: key left, value
+    /// right.
+    var horizontal = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(Palette.textSecondary)
-                .lineLimit(1)
-
-            Text(allTime, format: .number)
-                .font(.title2.weight(.semibold))
-                .monospacedDigit()
-                .foregroundStyle(valueColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
-
-            Text("\(Text(period, format: .number).monospacedDigit()) \(periodSuffix ?? "")")
-                .font(.caption)
-                .foregroundStyle(Palette.textSecondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .redacted(reason: isLoadingPeriod ? .placeholder : [])
-                // Reserve the line's height even when there is nothing to say.
-                .opacity(periodSuffix == nil ? 0 : 1)
-                .accessibilityHidden(periodSuffix == nil)
+        Group {
+            if horizontal {
+                HStack(alignment: .center, spacing: 8) {
+                    key
+                    Spacer(minLength: 8)
+                    figure(size: 18)
+                }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    key
+                    figure(size: 22)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .foregroundStyle(kind == .people ? Palette.pastelText : Palette.npastelText)
         .padding(.vertical, 10)
         .padding(.horizontal, 12)
-        .background(Palette.sunken, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
+        .background {
+            let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+            if kind == .people {
+                shape.fill(Palette.pastel)
+            } else {
+                shape.fill(Palette.npastel)
+            }
+        }
         .accessibilityElement(children: .combine)
+    }
+
+    private var key: some View {
+        Text(title)
+            .layoutFont(12, .medium)
+            .lineLimit(1)
+    }
+
+    private func figure(size: CGFloat) -> some View {
+        Text(value, format: .number)
+            .layoutFont(size, .semibold)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.5)
     }
 }

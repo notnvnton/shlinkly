@@ -43,7 +43,7 @@ struct SpotlightNoticeToast: View {
 
     private var tint: Color {
         switch kind {
-        case .switchedServer: Palette.accent
+        case .switchedServer: Palette.brand
         case .linkGone: .secondary
         case .openFailed: .orange
         }

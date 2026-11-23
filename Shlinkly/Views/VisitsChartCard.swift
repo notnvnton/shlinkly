@@ -6,98 +6,113 @@
 import SwiftUI
 import ShlinklyCore
 
-/// The detail screen's chart card: one label band — "Over time", with the step
-/// picker and the paging arrows on the trailing side — then the chart, then a
-/// footnote row with the date span and the series legend. While loading, empty
-/// or failed, the chart's stand-in takes the plot's place.
+/// "Over time", as layout v3 draws it.
 ///
-/// Everything it shows comes from the ``ShortURLDetailStore``; it holds no state
-/// of its own. Kept apart from ``DetailScreen`` so it can be previewed with a
-/// seeded store, without a server.
+/// Mac (`MacMain`): one `.mcard`. Its top row holds the "Over time" label and,
+/// when there is a choice, the step button ("Week ⌄", a small `.mbtn` menu);
+/// then the chart (170 pt plot), the axis, and a footer with the date range on
+/// the left and the legend on the right.
+///
+/// iPhone (`PhoneDetail`): the "Over time" label with the small segmented step
+/// control on its right, then a `.card` with the chart (180 pt plot) and the
+/// same footer.
+///
+/// The paging arrows of a paged month chart aren't drawn; they keep working,
+/// as square `.mbtn`s (Mac) or brand chevrons (iPhone) beside the step control.
+/// Everything comes from the ``ShortURLDetailStore``; this view holds no state.
 struct VisitsChartCard: View {
     let store: ShortURLDetailStore
 
     var body: some View {
-        Card {
+        #if os(macOS)
+        MacCard {
             VStack(alignment: .leading, spacing: 0) {
-                labelBand
-                chartContent
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, Space.cardInset)
+                HStack(alignment: .center, spacing: 6) {
+                    MacLabel("Over time")
+                        .padding(.vertical, 4)
+                    Spacer(minLength: 8)
+                    if store.state == .loaded {
+                        pagingButtons
+                        groupingPicker
+                    }
+                }
+                .padding(.leading, 16)
+                .padding(.trailing, 14)
+                .padding(.top, 8)
+
+                chartContent(plotHeight: 170)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+
                 if store.state == .loaded {
-                    footnoteRow
-                        .padding(.horizontal, Space.cardInset)
-                        .padding(.top, Space.tight)
-                        .padding(.bottom, Space.footBand)
-                } else {
-                    Color.clear.frame(height: Space.cardInset)
+                    footer
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
                 }
             }
+            .padding(.bottom, 12)
         }
-    }
-
-    // MARK: - Label band
-
-    /// "Over time" with the controls trailing. When the controls don't fit
-    /// beside the label (an iPhone with four steps *and* paging), they drop to
-    /// a row of their own under it.
-    private var labelBand: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: Space.tight) {
-                CardLabel("Over time")
-                Spacer(minLength: Space.tight)
-                controls
-            }
-            VStack(alignment: .leading, spacing: Space.tight) {
-                CardLabel("Over time")
-                HStack(spacing: Space.tight) {
-                    Spacer(minLength: 0)
-                    controls
+        #else
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .center, spacing: 8) {
+                Text("Over time")
+                    .layoutFont(13, .medium)
+                    .foregroundStyle(Palette.text2)
+                    .padding(.horizontal, 4)
+                    .accessibilityAddTraits(.isHeader)
+                Spacer(minLength: 8)
+                if store.state == .loaded {
+                    pagingButtons
+                    groupingPicker
                 }
             }
-        }
-        .padding(.horizontal, Space.cardInset)
-        .padding(.vertical, Space.labelBand)
-    }
+            .padding(.bottom, 8)
 
-    @ViewBuilder
-    private var controls: some View {
-        if store.state == .loaded {
-            HStack(spacing: Space.tight) {
-                groupingPicker
-                pagingButtons
+            LayoutCard {
+                VStack(alignment: .leading, spacing: 0) {
+                    chartContent(plotHeight: 180)
+                    if store.state == .loaded {
+                        footer
+                            .padding(.top, 10)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 14)
+                .padding(.bottom, 12)
             }
         }
+        #endif
     }
 
-    // MARK: - Footnote row
+    // MARK: - Footer
 
-    /// The date span on the leading side, the legend on the trailing side.
-    private var footnoteRow: some View {
-        HStack(alignment: .center, spacing: Space.tight) {
+    /// The date range on the left (11 pt Mac, 12 pt iPhone), the legend on the
+    /// right (11 pt): an 8 pt `--bar` square "People" and, while bots are
+    /// drawn, an 8 pt `--bar-bots` square "Bots", 12 pt apart.
+    private var footer: some View {
+        HStack(alignment: .center, spacing: 8) {
             Text(store.chartDateRange)
-                .font(.footnote)
-                .foregroundStyle(Palette.textSecondary)
+                .layoutFont(Self.footerSize)
                 .monospacedDigit()
+                .foregroundStyle(Palette.text2)
                 .lineLimit(1)
-            Spacer(minLength: Space.tight)
-            legend
+            Spacer(minLength: 8)
+            HStack(spacing: 12) {
+                legendItem("People", fill: AnyShapeStyle(Palette.bar))
+                if !store.excludeBots {
+                    legendItem("Bots", fill: AnyShapeStyle(Palette.barBots))
+                }
+            }
+            .accessibilityElement(children: .combine)
         }
     }
 
-    /// People always (a brand square); Bots only while they are drawn
-    /// (exclude bots off), as a translucent brand square like the columns'
-    /// empty part.
-    private var legend: some View {
-        HStack(spacing: 10) {
-            legendItem("People", fill: AnyShapeStyle(LinearGradient(
-                colors: [Palette.Bars.peopleTop, Palette.Bars.peopleBottom],
-                startPoint: .top, endPoint: .bottom)))
-            if !store.excludeBots {
-                legendItem("Bots", fill: AnyShapeStyle(Palette.Bars.bots))
-            }
-        }
-        .accessibilityElement(children: .combine)
+    private static var footerSize: CGFloat {
+        #if os(macOS)
+        11
+        #else
+        12
+        #endif
     }
 
     private func legendItem(_ title: String, fill: AnyShapeStyle) -> some View {
@@ -106,10 +121,54 @@ struct VisitsChartCard: View {
                 .fill(fill)
                 .frame(width: 8, height: 8)
             Text(title)
-                .font(.footnote)
-                .foregroundStyle(Palette.textSecondary)
+                .layoutFont(11)
+                .foregroundStyle(Palette.text2)
                 .lineLimit(1)
         }
+    }
+
+    // MARK: - Step control
+
+    /// Day / Week / Month / Year. Only "All time" offers a choice, and only
+    /// when the window is long enough for a coarser step to be worth drawing.
+    @ViewBuilder
+    private var groupingPicker: some View {
+        let groupings = store.availableGroupings
+        if groupings.count > 1 {
+            #if os(macOS)
+            // "Week ⌄": a 22 pt `.mbtn` with 12 pt text and no minimum width.
+            Menu {
+                Picker("Group by", selection: groupingBinding) {
+                    ForEach(groupings, id: \.self) { grouping in
+                        Text(grouping.label).tag(grouping)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                Text("\(store.chartGrouping.label) ⌄")
+            }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(MacButtonStyle(height: 22, fontSize: 12, minWidth: 0))
+            .fixedSize()
+            .accessibilityLabel("Group by, \(store.chartGrouping.label)")
+            #else
+            Picker("Group by", selection: groupingBinding) {
+                ForEach(groupings, id: \.self) { grouping in
+                    Text(grouping.label).tag(grouping)
+                }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .controlSize(.small)
+            .fixedSize()
+            #endif
+        }
+    }
+
+    private var groupingBinding: Binding<VisitGrouping> {
+        Binding(get: { store.chartGrouping }, set: { store.setGrouping($0) })
     }
 
     // MARK: - Paging
@@ -119,13 +178,11 @@ struct VisitsChartCard: View {
     private var pagingButtons: some View {
         if store.isChartPaged {
             HStack(spacing: 4) {
-                pageButton(systemImage: "chevron.left",
-                           label: "Previous 12 months",
+                pageButton(systemImage: "chevron.left", label: "Previous 12 months",
                            isEnabled: store.canShowPreviousChartPage) {
                     store.showPreviousChartPage()
                 }
-                pageButton(systemImage: "chevron.right",
-                           label: "Next 12 months",
+                pageButton(systemImage: "chevron.right", label: "Next 12 months",
                            isEnabled: store.canShowNextChartPage) {
                     store.showNextChartPage()
                 }
@@ -133,98 +190,52 @@ struct VisitsChartCard: View {
         }
     }
 
-    @ViewBuilder
     private func pageButton(
         systemImage: String,
         label: String,
         isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        #if os(macOS)
-        // Native push buttons, like Holds' "‹" / "›".
         Button(action: action) {
             Image(systemName: systemImage)
+                .font(.system(size: 10, weight: .semibold))
+                #if os(iOS)
+                .foregroundStyle(Palette.brand)
+                .frame(width: 32, height: 44)
+                .contentShape(Rectangle())
+                #endif
         }
+        #if os(macOS)
+        .buttonStyle(MacButtonStyle(square: true, height: 22))
+        #else
+        .buttonStyle(.plain)
+        #endif
         .disabled(!isEnabled)
+        .opacity(isEnabled ? 1 : 0.4)
         .accessibilityLabel(label)
         .help(label)
-        .nativeButtonStyle()
-        .controlSize(.small)
-        #else
-        let button = Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isEnabled ? Palette.accent : Palette.textSecondary)
-        }
-        .disabled(!isEnabled)
-        .accessibilityLabel(label)
-        // The 44 pt touch minimum, borderless like the rest of the iPhone card.
-        button
-            .frame(width: 36, height: 44)
-            .contentShape(Rectangle())
-            .buttonStyle(.borderless)
-        #endif
-    }
-
-    // MARK: - Step picker
-
-    /// The chart's step control (Day / Week / Month / Year), native: a small
-    /// pop-up menu on the Mac, a small segmented control on the iPhone. Only
-    /// "All time" offers a choice, and only when the window is long enough for
-    /// a coarser step to be worth drawing; otherwise there is nothing to pick
-    /// and it stays out of the band.
-    @ViewBuilder
-    private var groupingPicker: some View {
-        let groupings = store.availableGroupings
-        if store.state == .loaded, groupings.count > 1 {
-            Picker("Group by", selection: groupingBinding) {
-                ForEach(groupings, id: \.self) { grouping in
-                    Text(grouping.label).tag(grouping)
-                }
-            }
-            .labelsHidden()
-            #if os(macOS)
-            .pickerStyle(.menu)
-            .tint(Palette.accent)
-            #else
-            .pickerStyle(.segmented)
-            .brandSegmented()
-            #endif
-            .controlSize(.small)
-            .fixedSize()
-        }
-    }
-
-    private var groupingBinding: Binding<VisitGrouping> {
-        Binding(get: { store.chartGrouping }, set: { store.setGrouping($0) })
     }
 
     // MARK: - Chart
 
+    /// The chart, or its loading / empty / error stand-in (not drawn; kept, in
+    /// the layout's colors and buttons).
     @ViewBuilder
-    private var chartContent: some View {
+    private func chartContent(plotHeight: CGFloat) -> some View {
         switch store.state {
         case .loading:
             ProgressView()
-                .frame(maxWidth: .infinity, minHeight: 220)
+                .frame(maxWidth: .infinity, minHeight: plotHeight)
         case .error(let message):
-            chartMessage(
-                systemImage: "exclamationmark.triangle",
-                title: "Couldn't load visits",
-                detail: message
-            ) {
+            chartMessage(title: "Couldn't load visits", detail: message, plotHeight: plotHeight) {
                 Button("Try Again") { store.load() }
-                    .stateButtonStyle(prominent: true)
+                    .stateButtonStyle()
             }
         case .empty:
-            chartMessage(
-                systemImage: "chart.bar",
-                title: emptyTitle,
-                detail: nil
-            ) {
+            chartMessage(title: emptyTitle, detail: nil, plotHeight: plotHeight) {
                 if store.canSuggestAllTime {
                     Button("See all time") { store.showAllTime() }
-                        .stateButtonStyle(prominent: true)
+                        .stateButtonStyle()
                 }
             }
         case .loaded:
@@ -237,34 +248,31 @@ struct VisitsChartCard: View {
                            period: store.period,
                            excludeBots: store.excludeBots,
                            page: store.chartPage)
-                .frame(height: 220)
+                // The plot plus the axis labels under it (6 pt gap, 11 pt).
+                .frame(height: plotHeight + 22)
         }
     }
 
-    @ViewBuilder
     private func chartMessage<Action: View>(
-        systemImage: String,
         title: String,
         detail: String?,
+        plotHeight: CGFloat,
         @ViewBuilder action: () -> Action
     ) -> some View {
-        VStack(spacing: 10) {
-            Image(systemName: systemImage)
-                .font(.largeTitle)
-                .foregroundStyle(Palette.textSecondary)
+        VStack(spacing: 6) {
             Text(title)
-                .font(.headline)
-                .foregroundStyle(Palette.textPrimary)
+                .layoutFont(15, .semibold)
+                .foregroundStyle(Palette.text)
                 .multilineTextAlignment(.center)
             if let detail {
                 Text(detail)
-                    .font(.subheadline)
-                    .foregroundStyle(Palette.textSecondary)
+                    .layoutFont(13)
+                    .foregroundStyle(Palette.text2)
                     .multilineTextAlignment(.center)
             }
             action()
         }
-        .frame(maxWidth: .infinity, minHeight: 220)
+        .frame(maxWidth: .infinity, minHeight: plotHeight)
     }
 
     private var emptyTitle: String {
@@ -277,15 +285,15 @@ struct VisitsChartCard: View {
 }
 
 extension View {
-    /// The empty- and error-state buttons: native bordered, or the prominent
-    /// brand style for a state's one main action (Liquid Glass on 26+).
+    /// A state's one action (not drawn): `.mbtn-primary` on the Mac,
+    /// `.btn-text` on the iPhone.
     @ViewBuilder
-    func stateButtonStyle(prominent: Bool = false) -> some View {
-        if prominent {
-            nativeProminentButtonStyle()
-        } else {
-            nativeButtonStyle()
-        }
+    func stateButtonStyle() -> some View {
+        #if os(macOS)
+        buttonStyle(.macPrimary)
+        #else
+        buttonStyle(.layoutText)
+        #endif
     }
 }
 
@@ -326,9 +334,9 @@ private enum VisitsChartCardPreviewData {
     }
 }
 
-#Preview("Months, 12 at a time") {
+#Preview("Over time, months 12 at a time") {
     VisitsChartCard(store: VisitsChartCardPreviewData.store())
-        .padding(Space.screenEdge)
+        .padding(24)
         .frame(maxWidth: 680)
         .canvasBackground()
 }

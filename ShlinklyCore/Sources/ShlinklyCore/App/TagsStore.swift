@@ -25,6 +25,18 @@ public final class TagsStore {
         self.client = client
     }
 
+    #if DEBUG
+    /// A store already holding `tags` (marked loaded), for SwiftUI previews: it
+    /// never talks to a server (its client points nowhere).
+    public static func preview(tags: [String]) -> TagsStore {
+        let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
+        let store = TagsStore(client: client)
+        store.tags = tags
+        store.isLoaded = true
+        return store
+    }
+    #endif
+
     /// Loads and caches all tag names once. No-op if already loaded or a load is
     /// already in flight. Safe to call from several `.task` modifiers (list +
     /// sidebar) — only the first does work.

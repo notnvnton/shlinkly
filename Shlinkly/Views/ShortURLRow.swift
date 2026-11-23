@@ -6,51 +6,50 @@
 import SwiftUI
 import ShlinklyCore
 
-/// A single row in the short-URL list: title (or the long URL when untitled),
-/// then the short code and a relative creation date, with a visit count on the
-/// trailing edge.
-struct ShortURLRow: View {
+/// A `PhoneList` row: the 16 pt medium title (or the long URL when untitled),
+/// the 13 pt meta line (short code · relative date), and the 15 pt visit count
+/// trailing. At least 62 pt tall, 16 pt in, 12 pt between text and count.
+struct PhoneLinkRow: View {
     let shortURL: ShortURL
 
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
-            ShortURLRowPrimary(shortURL: shortURL)
-            Spacer(minLength: 8)
-            VisitsCountLabel(total: shortURL.visitsSummary.total)
+        HStack(alignment: .center, spacing: 12) {
+            LinkRowText(shortURL: shortURL, titleSize: 16, metaSize: 13)
+            Spacer(minLength: 0)
+            VisitsCountLabel(total: shortURL.visitsSummary.total, size: 15, weight: .regular)
         }
-        .padding(.vertical, 4)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity, minHeight: 62, alignment: .leading)
         .contentShape(Rectangle())
     }
 }
 
-/// The leading block of a short-URL row: the title (or the destination URL
-/// when untitled) above the short code and a relative creation date. Shared by
-/// the plain ``ShortURLRow`` and the macOS list row so both read identically.
-struct ShortURLRowPrimary: View {
+/// The text block of a link row: the title (or the destination URL when the
+/// short URL has no title) on one line, above the short code and a relative
+/// creation date in `--text2`, 2 pt (iPhone) / 3 pt (Mac) apart. Shared by the
+/// iPhone and Mac rows so both read the same.
+struct LinkRowText: View {
     let shortURL: ShortURL
-    /// The selected macOS row tints its title ``Palette/accentText``.
+    let titleSize: CGFloat
+    let metaSize: CGFloat
+    /// The selected Mac row's title is `--sel-text`.
     var isSelected = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: titleSize > 14 ? 2 : 3) {
             Text(primaryText)
-                .font(.body.weight(.medium))
-                .lineLimit(2)
-                .foregroundStyle(isSelected ? Palette.accentText : Palette.textPrimary)
+                .layoutFont(titleSize, .medium)
+                .foregroundStyle(isSelected ? Palette.selText : Palette.text)
+                .lineLimit(1)
+                .truncationMode(.tail)
 
-            HStack(spacing: 5) {
-                Text(shortURL.shortCode)
-                Text("·")
-                Text(shortURL.dateCreated, format: .relative(presentation: .named))
-            }
-            .font(.footnote)
-            .foregroundStyle(Palette.textSecondary)
-            .lineLimit(1)
+            Text("\(shortURL.shortCode) · \(shortURL.dateCreated.formatted(.relative(presentation: .named)))")
+                .layoutFont(metaSize)
+                .foregroundStyle(Palette.text2)
+                .lineLimit(1)
         }
     }
 
-    /// The first line: the resolved title, or the destination URL when the
-    /// short URL has no title.
     private var primaryText: String {
         if let title = shortURL.title, !title.isEmpty {
             return title
@@ -59,16 +58,17 @@ struct ShortURLRowPrimary: View {
     }
 }
 
-/// The trailing visit count of a short-URL row: the number alone, monospaced.
-/// Pulled out so the macOS row can swap it with its hover actions in place.
+/// A row's visit count: the number alone, tabular, in `--text2`.
 struct VisitsCountLabel: View {
     let total: Int
+    var size: CGFloat = 12
+    var weight: Font.Weight = .medium
 
     var body: some View {
         Text(total, format: .number)
-            .font(.footnote.weight(.medium))
+            .layoutFont(size, weight)
             .monospacedDigit()
-            .foregroundStyle(Palette.textSecondary)
+            .foregroundStyle(Palette.text2)
             .accessibilityLabel("\(total) visits")
     }
 }

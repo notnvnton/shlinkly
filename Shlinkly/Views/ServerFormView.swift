@@ -13,9 +13,8 @@ import ShlinklyCore
 ///
 /// It owns no persistence and no navigation: a host wraps it in a
 /// `NavigationStack` (Settings presents it as a sheet; onboarding pushes it)
-/// and reacts to ``onConnected`` by saving and dismissing/advancing. Its
-/// actions follow each platform: one bottom bar on the Mac (Remove Server…,
-/// Cancel, Save), the navigation bar on the iPhone.
+/// and reacts to ``onConnected`` by saving and dismissing/advancing. Laid out as
+/// layout v3 draws it: `MacServerSheet` and `PhoneServerForm`.
 struct ServerFormView: View {
     @State private var model: ServerFormModel
     /// Called after the green confirmation with the validated instance + key. It
@@ -23,10 +22,10 @@ struct ServerFormView: View {
     /// Keychain can fail (notably on macOS without the Keychain Sharing
     /// capability), in which case the form stays put and shows the error.
     private let onConnected: (ServerInstance, String) throws -> Void
-    /// When set (edit mode), a destructive "Remove Server" action is shown (the
-    /// Mac's bottom bar, the iPhone's last row); the host removes the instance
-    /// and dismisses. Gives macOS — where Settings has no swipe — a way to
-    /// delete a server, and works on iOS too.
+    /// When set (edit mode), a destructive "Remove Server…" / "Remove server"
+    /// action is shown (the Mac's bottom bar, the iPhone's bottom); the host
+    /// removes the instance and dismisses. Gives macOS — where Settings has no
+    /// swipe — a way to delete a server, and works on iOS too.
     private let onRemove: (() -> Void)?
 
     /// True when the form is presented modally (the Settings sheet): the form then
@@ -65,29 +64,8 @@ struct ServerFormView: View {
         self.onConnected = onConnected
     }
 
-    /// Verbatim "?" popover beside the API key field. Markdown: `code` and
-    /// **bold** render; the line break is preserved.
-    private static let keyHelp = """
-    On your server, run `shlink api-key:generate` and copy the key. You can only see it once.
-    Use an **unrestricted (admin)** key, or you'll only see part of your links.
-    """
-
     var body: some View {
         form
-            .navigationTitle(model.isEdit ? "Edit Server" : "Connect server")
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            .scrollDismissesKeyboard(.interactively)
-            .toolbar { iOSToolbar }
-            #else
-            // The system Settings look: grouped rows, label left, control right.
-            // The actions live in one bottom bar, never inside a section.
-            .formStyle(.grouped)
-            .safeAreaInset(edge: .bottom, spacing: 0) { macActionBar }
-            .frame(minWidth: 460, minHeight: 420)
-            #endif
-            // Block the silent interactive dismiss (iOS swipe-down; macOS click-away)
-            // while edits are pending, so changes can't be lost without a choice.
             .interactiveDismissDisabled(presentedAsSheet && model.isDirty)
             .alert("You have unsaved changes", isPresented: $showDiscardConfirm) {
                 Button("Don't Save", role: .destructive) { dismiss() }
@@ -112,99 +90,202 @@ struct ServerFormView: View {
             }
     }
 
-    // MARK: - Fields
+    /// "Edit Server" / "Connect Server" (Mac), "Edit server" / "Connect server"
+    /// (iPhone), as the artboards case them.
+    private var title: String {
+        #if os(macOS)
+        model.isEdit ? "Edit Server" : "Connect Server"
+        #else
+        model.isEdit ? "Edit server" : "Connect server"
+        #endif
+    }
 
-    @ViewBuilder
+    #if os(macOS)
+    // MARK: - Mac (MacServerSheet)
+
+    /// One card of label-left rows (Name, Server URL, API key), the Key storage
+    /// row with its footnote, and the bottom bar: Remove Server… (edit only),
+    /// Cancel (sheet only), Save / Connect.
     private var form: some View {
         @Bindable var model = model
-        Form {
-            #if os(macOS)
-            // One section of related fields, each a labelled row.
-            Section("Server") {
-                TextField("Name", text: $model.name, prompt: Text("My Shlink (optional)"))
-                    .focused($focusedField, equals: .name)
-                TextField("Server URL", text: $model.urlText, prompt: Text("https://shlink.example.com"))
-                    .focused($focusedField, equals: .url)
-                LabeledContent {
-                    SecretField(placeholder: "API key", text: $model.apiKey, focus: $focusedField, focusValue: .key)
-                } label: {
-                    HStack(spacing: 6) {
-                        Text("API key")
-                        InfoPopoverButton(title: "Where do I get a key?", message: Self.keyHelp)
+        return MacSheet(title) {
+            MacCard(solid: true) {
+                VStack(spacing: 0) {
+                    macField("Name") {
+                        TextField("Name", text: $model.name,
+                                  prompt: Text("My Shlink (optional)").foregroundStyle(Palette.text2))
+                            .focused($focusedField, equals: .name)
+                    }
+                    RowSeparator()
+                    macField("Server URL") {
+                        TextField("Server URL", text: $model.urlText,
+                                  prompt: Text("https://shlink.example.com").foregroundStyle(Palette.text2))
+                            .focused($focusedField, equals: .url)
+                    }
+                    RowSeparator()
+                    macField("API key") {
+                        SecretField(placeholder: "API key", text: $model.apiKey, focus: $focusedField,
+                                    focusValue: .key, alignment: .trailing, toggleSize: 12)
                     }
                 }
             }
 
-            Section {
-                keyStoragePicker
-            } footer: {
-                Text(storageCaption)
-            }
-            #else
-            Section("Name") {
-                // labelsHidden + an in-field prompt: the section header is the
-                // title, the field spans the row.
-                TextField("Name", text: $model.name, prompt: Text("My Shlink (optional)"))
-                    .labelsHidden()
-                    .focused($focusedField, equals: .name)
-            }
-
-            Section("Server URL") {
-                TextField("Server URL", text: $model.urlText, prompt: Text("https://shlink.example.com"))
-                    .labelsHidden()
-                    .focused($focusedField, equals: .url)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .keyboardType(.URL)
-            }
-
-            Section {
-                SecretField(placeholder: "API key", text: $model.apiKey, focus: $focusedField, focusValue: .key)
-            } header: {
-                HStack(spacing: 6) {
-                    Text("API key")
-                    InfoPopoverButton(title: "Where do I get a key?", message: Self.keyHelp)
+            VStack(alignment: .leading, spacing: 0) {
+                MacCard(solid: true) {
+                    HStack(spacing: 8) {
+                        Text("Key storage")
+                            .layoutFont(13)
+                            .foregroundStyle(Palette.text)
+                        Spacer(minLength: 8)
+                        MacSegmented("Key storage", selection: $model.keyStorage, options: [
+                            .init(value: .local, label: "On this device"),
+                            .init(value: .iCloud, label: "iCloud sync"),
+                        ])
+                    }
+                    .padding(.leading, 14)
+                    .padding(.trailing, 8)
+                    .frame(height: 44)
                 }
+                Footnote(storageCaption)
             }
 
-            Section {
-                keyStoragePicker
-                    .labelsHidden()
-            } header: {
-                Text("Key storage")
-            } footer: {
-                Text(storageCaption)
-            }
-
-            if hasStatus {
-                Section {
-                    EmptyView()
-                } footer: {
-                    statusFooter
-                }
-            }
-
-            // The iOS convention: a destructive row in its own last section.
+            statusNote
+        } bar: {
             if onRemove != nil {
-                Section {
-                    Button("Remove Server", role: .destructive) {
-                        showRemoveConfirm = true
-                    }
+                Button("Remove Server…") { showRemoveConfirm = true }
+                    .buttonStyle(.macDanger)
+            }
+            Spacer(minLength: 8)
+            if presentedAsSheet {
+                Button("Cancel") { attemptClose() }
+                    .buttonStyle(.mac)
+                    .keyboardShortcut(.cancelAction)
+            }
+            submitButton
+                .buttonStyle(.macPrimary)
+                .keyboardShortcut(.defaultAction)
+        }
+        .frame(width: 460)
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A `.mfield`: the 96 pt label on the left, the value right-aligned.
+    private func macField<Value: View>(_ label: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(spacing: 12) {
+            FieldLabel(label)
+            value()
+                .textFieldStyle(.plain)
+                .multilineTextAlignment(.trailing)
+                .foregroundStyle(Palette.text)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+        .macField()
+    }
+    #endif
+
+    #if os(iOS)
+    // MARK: - iPhone (PhoneServerForm)
+
+    /// The "Server" card (Name, URL, API key) with the key how-to, the Key
+    /// storage control with its footnote, then Save / Connect and (edit only)
+    /// "Remove server" at the bottom. As a sheet it draws its own title bar
+    /// with Cancel; pushed from onboarding it keeps the back button.
+    private var form: some View {
+        @Bindable var model = model
+        return VStack(spacing: 0) {
+            SheetHeader(title) {
+                if presentedAsSheet {
+                    Button("Cancel") { attemptClose() }
+                        .buttonStyle(.navLink())
                 }
             }
-            #endif
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel("Server")
+                        LayoutCard {
+                            VStack(spacing: 0) {
+                                phoneField("Name") {
+                                    TextField("Name", text: $model.name,
+                                              prompt: Text("My Shlink (optional)").foregroundStyle(Palette.text2))
+                                        .focused($focusedField, equals: .name)
+                                }
+                                RowSeparator()
+                                phoneField("URL") {
+                                    TextField("Server URL", text: $model.urlText,
+                                              prompt: Text("https://shlink.example.com").foregroundStyle(Palette.text2))
+                                        .focused($focusedField, equals: .url)
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled()
+                                        .keyboardType(.URL)
+                                }
+                                RowSeparator()
+                                phoneField("API key") {
+                                    SecretField(placeholder: "API key", text: $model.apiKey,
+                                                focus: $focusedField, focusValue: .key, toggleSize: 14)
+                                }
+                            }
+                        }
+                        Footnote(Text("On your server, run \(Text("shlink api-key:generate").monospaced()) and copy the key. You can only see it once."))
+                    }
+
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionLabel("Key storage")
+                        Picker("Key storage", selection: $model.keyStorage) {
+                            Text("On this device").tag(KeyStorage.local)
+                            Text("iCloud sync").tag(KeyStorage.iCloud)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        Footnote(storageCaption)
+                    }
+
+                    statusNote
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 16)
+                .padding(.bottom, 16)
+            }
+            .scrollDismissesKeyboard(.interactively)
+            BottomBar(vertical: true, spacing: 6) {
+                submitButton
+                    .buttonStyle(.layoutPrimary)
+                if onRemove != nil {
+                    Button("Remove server") { showRemoveConfirm = true }
+                        .buttonStyle(.layoutDangerText)
+                }
+            }
+        }
+        .canvasBackground()
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(presentedAsSheet ? .hidden : .automatic, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1)
+            }
+            // Native keyboard-accessory "Done", shown only while a field is
+            // focused. The glass capsule on iOS 26 is the system's styling of
+            // keyboard toolbar items, not chrome we add.
+            ToolbarItemGroup(placement: .keyboard) {
+                Spacer()
+                Button("Done") { focusedField = nil }
+                    .fontWeight(.semibold)
+            }
         }
     }
 
-    /// The native segmented key-storage control, in brand color.
-    private var keyStoragePicker: some View {
-        Picker("Key storage", selection: $model.keyStorage) {
-            Text("On this device").tag(KeyStorage.local)
-            Text("iCloud sync").tag(KeyStorage.iCloud)
+    /// A `.field`: the 96 pt label, then the value. 48 pt, 16 pt text.
+    private func phoneField<Value: View>(_ label: String, @ViewBuilder value: () -> Value) -> some View {
+        HStack(spacing: 0) {
+            FieldLabel(label)
+            value()
+                .textFieldStyle(.plain)
+                .foregroundStyle(Palette.text)
         }
-        .pickerStyle(.segmented)
-        .brandSegmented()
+        .layoutRow()
     }
+    #endif
 
     // MARK: - Actions
 
@@ -224,79 +305,6 @@ struct ServerFormView: View {
         }
         .disabled(!model.canSubmit)
     }
-
-    #if os(macOS)
-    /// The sheet's one bottom bar, under a hairline: Remove Server… on the
-    /// leading side (edit only, system red), Cancel (sheet only) and Save /
-    /// Connect on the trailing side. The validation status sits above it.
-    private var macActionBar: some View {
-        VStack(spacing: 0) {
-            Divider()
-            VStack(alignment: .leading, spacing: Space.tight) {
-                if hasStatus {
-                    statusFooter
-                }
-                HStack(spacing: Space.tight) {
-                    if onRemove != nil {
-                        Button(role: .destructive) {
-                            showRemoveConfirm = true
-                        } label: {
-                            // Red set explicitly: the root brand tint must not
-                            // turn a destructive action lavender.
-                            Text("Remove Server…")
-                                .foregroundStyle(.red)
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(.red)
-                    }
-                    Spacer(minLength: Space.tight)
-                    if presentedAsSheet {
-                        Button("Cancel") { attemptClose() }
-                            .buttonStyle(.bordered)
-                            .keyboardShortcut(.cancelAction)
-                    }
-                    submitButton
-                        .nativeProminentButtonStyle()
-                        .keyboardShortcut(.defaultAction)
-                }
-            }
-            .controlSize(.regular)
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-        }
-        .background(.bar)
-    }
-    #endif
-
-    #if os(iOS)
-    @ToolbarContentBuilder
-    private var iOSToolbar: some ToolbarContent {
-        // The form owns its Cancel when presented modally (Settings), so the
-        // close routes through the unsaved-changes guard. Onboarding pushes the
-        // form; the back button is the way out there.
-        if presentedAsSheet {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { attemptClose() }
-            }
-        }
-        ToolbarItem(placement: .confirmationAction) {
-            submitButton
-                .fontWeight(.semibold)
-                .tint(Palette.accent)
-        }
-        // Native keyboard-accessory "Done": a plain text button pushed to the
-        // trailing edge by a Spacer, shown only while a field is focused. No
-        // custom background/buttonStyle/tint — the glass capsule seen on iOS 26
-        // is the system Liquid Glass styling applied to keyboard toolbar items
-        // themselves, not chrome we add (and .buttonStyle(.plain) is
-        // unavailable on iOS 26, so it can't be flattened that way).
-        ToolbarItemGroup(placement: .keyboard) {
-            Spacer()
-            Button("Done") { focusedField = nil }
-                .fontWeight(.semibold)
-        }
-    }
-    #endif
 
     /// Drives the save-failure alert; clears the message when dismissed.
     private var saveErrorBinding: Binding<Bool> {
@@ -325,21 +333,14 @@ struct ServerFormView: View {
 
     // MARK: - Status
 
-    /// Whether there is a validation result (error or confirmation) to show.
-    private var hasStatus: Bool {
-        model.errorMessage != nil || model.successMessage != nil
-    }
-
+    /// The connection check's result (not drawn; kept): a footnote in `--ok`
+    /// or `--danger`.
     @ViewBuilder
-    private var statusFooter: some View {
+    private var statusNote: some View {
         if let error = model.errorMessage {
-            Label(error, systemImage: "exclamationmark.triangle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.red)
+            Footnote(error, color: Palette.danger)
         } else if let success = model.successMessage {
-            Label(success, systemImage: "checkmark.circle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.green)
+            Footnote(success, color: Palette.ok)
         }
     }
 
@@ -381,14 +382,12 @@ struct ServerFormView: View {
 // MARK: - Preview
 
 #if DEBUG
-/// The Edit Server sheet as Settings presents it: on the Mac with its bottom
-/// bar (Remove Server…, Cancel, Save), on the iPhone with Cancel / Save in the
-/// navigation bar and Remove Server as the last row. Nothing is saved.
+/// The Edit Server sheet as Settings presents it. Nothing is saved.
 private struct EditServerPreview: View {
     var body: some View {
         NavigationStack {
             ServerFormView(
-                mode: .edit(ServerInstance(name: "Home", baseURL: URL(string: "https://go.example.com")!,
+                mode: .edit(ServerInstance(name: "Main Server", baseURL: URL(string: "https://go.example.com")!,
                                            keyStorage: .iCloud)),
                 existingKey: "preview-api-key",
                 presentedAsSheet: true,
@@ -399,13 +398,25 @@ private struct EditServerPreview: View {
     }
 }
 
-#Preview("Edit Server, light") {
+#if os(macOS)
+#Preview("MacServerSheet light") {
     EditServerPreview()
         .preferredColorScheme(.light)
 }
 
-#Preview("Edit Server, dark") {
+#Preview("MacServerSheet dark") {
     EditServerPreview()
         .preferredColorScheme(.dark)
 }
+#else
+#Preview("PhoneServerForm light") {
+    EditServerPreview()
+        .preferredColorScheme(.light)
+}
+
+#Preview("PhoneServerForm dark") {
+    EditServerPreview()
+        .preferredColorScheme(.dark)
+}
+#endif
 #endif

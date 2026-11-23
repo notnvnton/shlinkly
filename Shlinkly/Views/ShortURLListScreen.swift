@@ -132,17 +132,9 @@ struct ShortURLListScreen: View {
     private static let listAnimation: Animation = .spring(response: 0.42, dampingFraction: 0.8)
 
     var body: some View {
-        VStack(spacing: 0) {
-            if let tag = store.activeTag {
-                FilterPill(tag: tag) { store.setActiveTag(nil) }
-            }
-            content
-        }
-        .canvasBackground()
+        screen
         .navigationTitle("Links")
         .toolbar { toolbarContent }
-        .searchable(text: searchBinding, prompt: Text("Search links"))
-        .tagSearchSuggestions(tagSuggestions) { store.applyTagFromSearch($0) }
         .sheet(item: $formRoute) { route in
             Group {
                 switch route {
@@ -450,13 +442,6 @@ struct ShortURLListScreen: View {
     }
     #endif
 
-    /// Tags matching the current search text, surfaced as suggestions while the
-    /// user types (iPhone). Empty while not searching, so the URL/code results
-    /// show normally.
-    private var tagSuggestions: [String] {
-        tagsStore.suggestions(for: store.searchTerm)
-    }
-
     #if os(iOS)
     // MARK: - Multi-select (iPhone)
 
@@ -510,40 +495,84 @@ struct ShortURLListScreen: View {
     }
     #endif
 
-    // MARK: - State routing
+    // MARK: - Screen
+
+    /// `MacMain` list column: the gray search field under the title bar, then
+    /// the rows. `PhoneList`: one scrolling page (large title, search card, tag
+    /// chips, the rows card) with "New link" in the bottom bar.
+    @ViewBuilder
+    private var screen: some View {
+        #if os(macOS)
+        VStack(spacing: 0) {
+            macSearchField
+            macContent
+        }
+        #else
+        phoneList
+            .canvasBackground()
+            .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !isSelecting {
+                    BottomBar { newLinkButton }
+                }
+            }
+        #endif
+    }
+
+    #if os(macOS)
+    // MARK: - Mac list column
+
+    /// The search field under the list column's title bar: 28 pt, radius 7,
+    /// `--seg-track`, a 12 pt magnifier, 13 pt text.
+    private var macSearchField: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(Palette.text2)
+                .accessibilityHidden(true)
+            TextField("Search links", text: searchBinding, prompt: Text("Search links").foregroundStyle(Palette.text2))
+                .textFieldStyle(.plain)
+                .layoutFont(13)
+                .foregroundStyle(Palette.text)
+        }
+        .padding(.horizontal, 8)
+        .frame(height: 28)
+        .background(Palette.segTrack, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.bottom, 8)
+    }
 
     @ViewBuilder
-    private var content: some View {
+    private var macContent: some View {
         switch store.state {
         case .loading:
-            loadingView
+            macLoadingView
         case .empty:
-            emptyView
+            macStateView(title: filterActive ? "No matches" : "No links yet",
+                         message: emptyDescription,
+                         actionTitle: filterActive ? nil : "Create First Link") { startCreate() }
         case .error(let message):
-            errorView(message)
+            macStateView(title: "Couldn't load links", message: message,
+                         actionTitle: "Try Again") { store.loadFirstPage() }
         case .loaded, .loadingMore:
-            listView
+            macListView
         }
     }
 
-    // MARK: - Loaded list
-
-    private var listView: some View {
-        #if os(macOS)
-        // Not a `List`: the Mac's `List` draws its selection in the system
-        // accent color (blue on most Macs) and offers no way to replace it. A
-        // lazy stack draws the soft lavender pill itself and keeps the same
-        // `selection` binding, so the detail column, the refresh resync and the
-        // ListRefresh restore all work unchanged. ↑/↓ move the selection while
-        // the list has focus (a click on a row gives it focus).
+    // Not a `List`: the Mac's `List` draws its selection in the system accent
+    // color and offers no way to replace it. A lazy stack draws the `--sel`
+    // pill itself and keeps the same `selection` binding, so the detail column,
+    // the refresh resync and the ListRefresh restore all work unchanged. ↑/↓
+    // move the selection while the list has focus (a click on a row gives it
+    // focus).
+    private var macListView: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 0) {
+                LazyVStack(spacing: 2) {
                     ForEach(store.items) { item in
                         MacLinkRow(
                             shortURL: item,
                             isSelected: item.id == selectedLinkID,
-                            showsSeparator: item.id != store.items.last?.id,
                             onSelect: { select(item) },
                             onCopy: { copyShortURL(item) },
                             onEdit: { formRoute = .edit(item) },
@@ -566,7 +595,8 @@ struct ShortURLListScreen: View {
                         loadMoreFooter
                     }
                 }
-                .padding(.vertical, 6)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
                 .animation(Self.listAnimation, value: store.items)
             }
             .focusable()
@@ -576,78 +606,46 @@ struct ShortURLListScreen: View {
             .onKeyPress(.downArrow) { moveSelection(by: 1, proxy: proxy) }
             .accessibilityLabel("Links")
         }
-        #else
-        List(selection: $selectedIDs) {
-            ForEach(store.items) { item in
-                // The chips live *outside* the NavigationLink as siblings so a
-                // chip tap fires its own button (filter) without triggering the
-                // row's push to the detail screen.
-                VStack(alignment: .leading, spacing: 6) {
-                    NavigationLink(value: Route.shortURLDetail(item)) {
-                        ShortURLRow(shortURL: item)
-                    }
-                    if !item.tags.isEmpty {
-                        RowTags(tags: item.tags) { store.setActiveTag($0) }
-                    }
-                }
-                .listRowBackground(Palette.surface)
-                .listRowSeparatorTint(Palette.hairline)
-                .tag(item.id)
-                .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
-                // Leading: full-swipe copies. Kept as its own block so a Pin
-                // button can later sit alongside Copy without restructuring.
-                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    copyButton(item).tint(Palette.accent)
-                }
-                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                    swipeDeleteButton(item)
-                    editButton(item).tint(Palette.accent)
-                    swipeShareButton(item)
-                }
-                .contextMenu {
-                    copyButton(item)
-                    shareLink(item)
-                    Divider()
-                    editButton(item)
-                    Button {
-                        enterSelection(item)
-                    } label: {
-                        Label("Select", systemImage: "checkmark.circle")
-                    }
-                    Divider()
-                    deleteButton(item)
-                }
-            }
-
-            if store.state == .loadingMore {
-                loadMoreFooter
-            }
-        }
-        // The flat matte look of build 1: inset cards of rows on the canvas.
-        .listStyle(.insetGrouped)
-        .scrollContentBackground(.hidden)
-        .scrollDismissesKeyboard(.interactively)
-        .environment(\.editMode, editModeBinding)
-        .refreshable { await store.refresh() }
-        .animation(Self.listAnimation, value: store.items)
-        .shortURLGroupDeleteConfirmation(count: selectedIDs.count, isPresented: $showGroupDeleteConfirm) {
-            Task { await runGroupDelete() }
-        }
-        #endif
     }
 
-    private var loadMoreFooter: some View {
-        HStack {
-            Spacer()
-            ProgressView()
-            Spacer()
+    private var macLoadingView: some View {
+        ScrollView {
+            VStack(spacing: 2) {
+                ForEach(0..<8, id: \.self) { _ in
+                    SkeletonRow()
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
+                }
+            }
+            .padding(.horizontal, 8)
         }
-        .listRowSeparator(.hidden)
-        .listRowBackground(Color.clear)
-        .padding(.vertical, 8)
+        .redacted(reason: .placeholder)
+        .allowsHitTesting(false)
+        .accessibilityLabel("Loading links")
     }
 
-    #if os(macOS)
+    /// Empty and error states (not drawn): the message in the layout's text
+    /// colors and a `.mbtn-primary` action.
+    private func macStateView(title: String, message: String, actionTitle: String?,
+                              action: @escaping () -> Void) -> some View {
+        VStack(spacing: 8) {
+            Text(title)
+                .layoutFont(15, .semibold)
+                .foregroundStyle(Palette.text)
+            Text(message)
+                .layoutFont(13)
+                .foregroundStyle(Palette.text2)
+                .multilineTextAlignment(.center)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.macPrimary)
+                    .padding(.top, 6)
+            }
+        }
+        .padding(24)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     // MARK: - Mac selection & keyboard
 
     /// The selected link's identity. Matched by id, not value, so a refreshed
@@ -676,78 +674,237 @@ struct ShortURLListScreen: View {
     }
     #endif
 
-    // MARK: - Loading skeleton
+    #if os(iOS)
+    // MARK: - iPhone list
 
-    private var loadingView: some View {
-        Group {
-            #if os(macOS)
-            ScrollView {
-                VStack(spacing: 0) {
-                    ForEach(0..<8, id: \.self) { _ in
-                        SkeletonRow()
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 10)
+    /// The whole `PhoneList` page as one `List`, so pull-to-refresh, swipe
+    /// actions, the context menu and multi-select keep working: the header rows
+    /// (title, search card, tag chips) sit on the screen background, and the
+    /// link rows each draw their slice of the rows card.
+    private var phoneList: some View {
+        List(selection: $selectedIDs) {
+            Text("Links")
+                .layoutFont(30, .semibold, tracking: -0.3)
+                .foregroundStyle(Palette.text)
+                .accessibilityAddTraits(.isHeader)
+                .pageRow(top: 6)
+
+            phoneSearchField
+                .pageRow(top: 14)
+
+            if !tagsStore.tags.isEmpty {
+                tagChips
+                    .pageRow(top: 12, horizontal: 0)
+            }
+
+            switch store.state {
+            case .loading:
+                ForEach(0..<8, id: \.self) { index in
+                    SkeletonRow()
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 62)
+                        .background { RowsCardSegment(isFirst: index == 0, isLast: index == 7) }
+                        .redacted(reason: .placeholder)
+                        .pageRow(top: index == 0 ? 16 : 0)
+                }
+                .accessibilityLabel("Loading links")
+            case .empty:
+                phoneStateView(title: filterActive ? "No matches" : "No links yet",
+                               message: emptyDescription, actionTitle: nil) {}
+            case .error(let message):
+                phoneStateView(title: "Couldn't load links", message: message,
+                               actionTitle: "Try Again") { store.loadFirstPage() }
+            case .loaded, .loadingMore:
+                phoneLinkRows
+                if store.state == .loadingMore {
+                    loadMoreFooter
+                }
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .environment(\.defaultMinListRowHeight, 0)
+        .scrollDismissesKeyboard(.interactively)
+        .environment(\.editMode, editModeBinding)
+        .refreshable { await store.refresh() }
+        .animation(Self.listAnimation, value: store.items)
+        .shortURLGroupDeleteConfirmation(count: selectedIDs.count, isPresented: $showGroupDeleteConfirm) {
+            Task { await runGroupDelete() }
+        }
+    }
+
+    /// The rows card: 62 pt rows, 1 pt `--sep` lines between them.
+    private var phoneLinkRows: some View {
+        ForEach(store.items) { item in
+            let isFirst = item.id == store.items.first?.id
+            let isLast = item.id == store.items.last?.id
+            PhoneLinkRow(shortURL: item)
+                // The hidden link makes the whole row navigate, without the
+                // disclosure chevron the layout doesn't draw.
+                .background {
+                    NavigationLink(value: Route.shortURLDetail(item)) { EmptyView() }
+                        .opacity(0)
+                }
+                .background { RowsCardSegment(isFirst: isFirst, isLast: isLast) }
+                .pageRow(top: isFirst ? 16 : 0)
+                .tag(item.id)
+                .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
+                // Leading: full-swipe copies. Kept as its own block so a Pin
+                // button can later sit alongside Copy without restructuring.
+                .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                    copyButton(item).tint(Palette.brand)
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    swipeDeleteButton(item)
+                    editButton(item).tint(Palette.brand)
+                    swipeShareButton(item)
+                }
+                .contextMenu {
+                    copyButton(item)
+                    shareLink(item)
+                    Divider()
+                    editButton(item)
+                    Button {
+                        enterSelection(item)
+                    } label: {
+                        Label("Select", systemImage: "checkmark.circle")
+                    }
+                    Divider()
+                    deleteButton(item)
+                }
+        }
+    }
+
+    /// The search card: 44 pt, a 15 pt magnifier, 16 pt text.
+    private var phoneSearchField: some View {
+        LayoutCard {
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(Palette.text2)
+                    .accessibilityHidden(true)
+                TextField("Search links", text: searchBinding, prompt: Text("Search links").foregroundStyle(Palette.text2))
+                    .layoutFont(16)
+                    .foregroundStyle(Palette.text)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 44)
+        }
+    }
+
+    /// The tag filter chips: "All" plus every tag. They drive the same
+    /// ``ShortURLListStore/activeTag`` the Mac sidebar uses.
+    private var tagChips: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                FilterChip(title: "All", isOn: store.activeTag == nil) {
+                    store.setActiveTag(nil)
+                }
+                ForEach(tagsStore.tags, id: \.self) { tag in
+                    FilterChip(title: tag, isOn: store.activeTag == tag) {
+                        store.setActiveTag(tag)
                     }
                 }
-                .padding(.vertical, 6)
-            }
-            #else
-            List(0..<8, id: \.self) { _ in
-                SkeletonRow()
-                    .listRowBackground(Palette.surface)
-            }
-            .listStyle(.insetGrouped)
-            .scrollContentBackground(.hidden)
-            #endif
-        }
-        .redacted(reason: .placeholder)
-        .allowsHitTesting(false)
-        .accessibilityLabel("Loading links")
-    }
-
-    // MARK: - Empty
-
-    private var emptyView: some View {
-        ContentUnavailableView {
-            Label(
-                filterActive ? "No matches" : "No links yet",
-                systemImage: filterActive ? "magnifyingglass" : "link"
-            )
-        } description: {
-            Text(emptyDescription)
-        } actions: {
-            if !filterActive {
-                Button {
-                    startCreate()
-                } label: {
-                    Label("Create First Link", systemImage: "plus")
-                }
-                .stateButtonStyle(prominent: true)
             }
         }
+        .contentMargins(.horizontal, 20, for: .scrollContent)
     }
 
-    // MARK: - Error
-
-    private func errorView(_ message: String) -> some View {
-        ContentUnavailableView {
-            Label("Couldn't load links", systemImage: "exclamationmark.triangle")
-        } description: {
+    /// Empty and error states (not drawn): the message in the layout's text
+    /// colors and a `.btn-text` action.
+    private func phoneStateView(title: String, message: String, actionTitle: String?,
+                                action: @escaping () -> Void) -> some View {
+        VStack(spacing: 6) {
+            Text(title)
+                .layoutFont(17, .semibold)
+                .foregroundStyle(Palette.text)
             Text(message)
-        } actions: {
-            Button {
-                store.loadFirstPage()
-            } label: {
-                Label("Try Again", systemImage: "arrow.clockwise")
+                .layoutFont(15)
+                .foregroundStyle(Palette.text2)
+                .multilineTextAlignment(.center)
+            if let actionTitle {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.layoutText)
             }
-            .stateButtonStyle(prominent: true)
         }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 32)
+        .pageRow(top: 16)
+    }
+
+    /// "New link", the screen's main action. With a URL on the clipboard it is a
+    /// `Menu` (Paste / New), otherwise a plain button. See the invariant on
+    /// ``addMenu``: the choice is owned by this button, never a screen-root
+    /// dialog.
+    @ViewBuilder
+    private var newLinkButton: some View {
+        if clipboardHasURL {
+            Menu {
+                Button("Paste from clipboard") {
+                    formRoute = .create(prefillURL: Clipboard.peekURLString())
+                }
+                Button("New link") {
+                    formRoute = .create(prefillURL: nil)
+                }
+            } label: {
+                PrimaryButtonFace(title: "New link")
+            }
+        } else {
+            Button("New link") {
+                formRoute = .create(prefillURL: nil)
+            }
+            .buttonStyle(.layoutPrimary)
+        }
+    }
+
+    /// The server pill: the active server's host. It opens a menu of the
+    /// configured servers and switches between them.
+    private var serverPill: some View {
+        Menu {
+            ForEach(appModel.instanceStore.instances) { instance in
+                Button {
+                    appModel.selectInstance(instance.id)
+                } label: {
+                    if instance.id == appModel.activeInstance?.id {
+                        Label(instance.displayName, systemImage: "checkmark")
+                    } else {
+                        Text(instance.displayName)
+                    }
+                }
+            }
+        } label: {
+            ServerPillLabel(title: serverTitle)
+        }
+        .accessibilityLabel("Server, \(serverTitle)")
+    }
+
+    private var serverTitle: String {
+        guard let active = appModel.activeInstance else { return "Server" }
+        return active.baseURL.host ?? active.displayName
+    }
+    #endif
+
+    private var loadMoreFooter: some View {
+        HStack {
+            Spacer()
+            ProgressView()
+            Spacer()
+        }
+        .padding(.vertical, 8)
+        #if os(iOS)
+        .pageRow(top: 0)
+        #endif
     }
 
     // MARK: - Toolbar & bindings
 
-    /// The toolbar swaps to a batch-delete mode while selecting (iPhone);
-    /// otherwise it's the gear + sort + add set.
+    /// iPhone: the gear and the server pill (no inline title: the page draws
+    /// its large "Links"), swapped for Cancel / Delete while selecting. Mac: the
+    /// list column's title bar, "Links" with the square Refresh, Sort and "+"
+    /// buttons.
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         #if os(iOS)
@@ -764,107 +921,113 @@ struct ShortURLListScreen: View {
                 .disabled(selectedIDs.isEmpty)
             }
         } else {
-            settingsToolbar
-            sortToolbar
-            addToolbar
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 19, weight: .regular))
+                        .foregroundStyle(Palette.brand)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Settings")
+            }
+            .withoutSharedBackground()
+            ToolbarItem(placement: .principal) {
+                Color.clear.frame(width: 1, height: 1)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                serverPill
+            }
+            .withoutSharedBackground()
         }
         #else
-        settingsToolbar
-        refreshToolbar
-        sortToolbar
-        addToolbar
+        ToolbarItem(placement: .navigation) {
+            Text("Links")
+                .layoutFont(15, .semibold)
+                .foregroundStyle(Palette.text)
+                .accessibilityAddTraits(.isHeader)
+        }
+        .withoutSharedBackground()
+        ToolbarItem(placement: .primaryAction) {
+            refreshButton
+        }
+        .withoutSharedBackground()
+        ToolbarItem(placement: .primaryAction) {
+            sortMenu
+        }
+        .withoutSharedBackground()
+        ToolbarItem(placement: .primaryAction) {
+            addMenu
+        }
+        .withoutSharedBackground()
         #endif
     }
 
     #if os(macOS)
-    /// macOS manual refresh. The Mac has no pull-to-refresh gesture, so the
-    /// toolbar button is how the user reloads on demand; it re-queries the active
-    /// page/search/sort via ``ShortURLListStore/refresh()``, keeping the current
-    /// rows visible. (iOS uses `.refreshable` pull-to-refresh instead.)
-    @ToolbarContentBuilder
-    private var refreshToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Button {
-                Task {
-                    isRefreshing = true
-                    await coordinatedRefresh(trigger: "toolbar button", force: true)
-                    isRefreshing = false
-                }
-            } label: {
-                // A small inline spinner while refreshing — the list stays on
-                // screen and its rows diff in place when the data lands.
-                if isRefreshing {
-                    ProgressView()
-                        .controlSize(.small)
-                } else {
-                    Label("Refresh", systemImage: "arrow.clockwise")
-                }
+    /// Manual refresh (`.mbtn-sq`). The Mac has no pull-to-refresh, so this is
+    /// how the user reloads on demand; it re-queries the active
+    /// page/search/sort, keeping the current rows visible. A small spinner
+    /// replaces the glyph while it runs.
+    private var refreshButton: some View {
+        Button {
+            Task {
+                isRefreshing = true
+                await coordinatedRefresh(trigger: "toolbar button", force: true)
+                isRefreshing = false
             }
-            .disabled(isRefreshing)
+        } label: {
+            if isRefreshing {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Image(systemName: "arrow.clockwise")
+                    .font(.system(size: 11, weight: .semibold))
+            }
         }
+        .buttonStyle(.macSquare)
+        .disabled(isRefreshing)
+        .help("Refresh")
+        .accessibilityLabel("Refresh")
+    }
+
+    /// Sort (`.mbtn-sq`): Newest or Most visited.
+    private var sortMenu: some View {
+        Menu {
+            Picker("Sort by", selection: orderBinding) {
+                Label("Newest", systemImage: "clock").tag(ShortURLsOrder.newest)
+                Label("Most visited", systemImage: "eye").tag(ShortURLsOrder.mostVisited)
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .font(.system(size: 11, weight: .semibold))
+        }
+        .menuStyle(.button)
+        .menuIndicator(.hidden)
+        .buttonStyle(.macSquare)
+        .help("Sort")
+        .accessibilityLabel("Sort")
     }
     #endif
 
-    /// The gear that opens Settings, pinned to the top-leading corner.
-    @ToolbarContentBuilder
-    private var settingsToolbar: some ToolbarContent {
-        #if os(iOS)
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                showSettings = true
-            } label: {
-                Label("Settings", systemImage: "gearshape")
-            }
-        }
-        #else
-        ToolbarItem(placement: .navigation) {
-            Button {
-                showSettings = true
-            } label: {
-                Label("Settings", systemImage: "gearshape")
-            }
-        }
-        #endif
-    }
-
-    @ToolbarContentBuilder
-    private var sortToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Picker("Sort by", selection: orderBinding) {
-                    Label("Newest", systemImage: "clock").tag(ShortURLsOrder.newest)
-                    Label("Most visited", systemImage: "eye").tag(ShortURLsOrder.mostVisited)
-                }
-            } label: {
-                Label("Sort", systemImage: "arrow.up.arrow.down")
-            }
-        }
-    }
-
-    /// The "+" that opens the create form, sitting alongside the sort control.
+    /// The Mac's "+" (`.mbtn-sq.mbtn-primary`).
     ///
-    /// REGRESSION GUARD — invariant: the clipboard choice MUST be owned by this
-    /// "+" toolbar item (a `Menu`/popover anchored to the button — see `addMenu`).
-    /// It MUST NOT be a screen-root `.confirmationDialog`/`.popover`: those take no
-    /// source anchor, so on iPad SwiftUI synthesizes the popover arrow from the
-    /// screen bounds and it lands on a list row instead of the "+" (regressed 3×).
-    /// A `Menu`'s popover is anchored by the system to its own label, so it
-    /// structurally cannot hit a row. One shared path for iOS and macOS.
-    @ToolbarContentBuilder
-    private var addToolbar: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            addMenu
-        }
-    }
-
-    /// The "+" content, shared by iOS and macOS: a pull-down `Menu` with Paste/New
-    /// when the clipboard looks like a URL, or a plain button that opens New Link
-    /// when it doesn't — so an empty clipboard takes a single tap and never shows
-    /// an empty menu. Because the choice is a `Menu`, its popover is anchored by
-    /// the system to this button on every platform (including iPad) — never to a
-    /// list row. See the invariant on `addToolbar`.
+    /// REGRESSION GUARD — invariant: the clipboard choice MUST be owned by the
+    /// new-link button itself (a `Menu` anchored to the button: this one on the
+    /// Mac, ``newLinkButton`` on the iPhone). It MUST NOT be a screen-root
+    /// `.confirmationDialog`/`.popover`: those take no source anchor, so on iPad
+    /// SwiftUI synthesizes the popover arrow from the screen bounds and it lands
+    /// on a list row instead of the button (regressed 3×). A `Menu`'s popover is
+    /// anchored by the system to its own label, so it structurally cannot hit a
+    /// row. With no URL on the clipboard it is a plain button, so an empty
+    /// clipboard takes a single click and never shows an empty menu.
+    #if os(macOS)
     @ViewBuilder
     private var addMenu: some View {
+        let glyph = Image(systemName: "plus")
+            .font(.system(size: 11, weight: .semibold))
         if clipboardHasURL {
             Menu {
                 Button("Paste from clipboard") {
@@ -874,16 +1037,25 @@ struct ShortURLListScreen: View {
                     formRoute = .create(prefillURL: nil)
                 }
             } label: {
-                Label("New Link", systemImage: "plus")
+                glyph
             }
+            .menuStyle(.button)
+            .menuIndicator(.hidden)
+            .buttonStyle(.macSquarePrimary)
+            .help("New link")
+            .accessibilityLabel("New link")
         } else {
             Button {
                 formRoute = .create(prefillURL: nil)
             } label: {
-                Label("New Link", systemImage: "plus")
+                glyph
             }
+            .buttonStyle(.macSquarePrimary)
+            .help("New link")
+            .accessibilityLabel("New link")
         }
     }
+    #endif
 
     /// Search routes through the store so the debounce and server query run.
     private var searchBinding: Binding<String> {
@@ -916,53 +1088,60 @@ struct ShortURLListScreen: View {
     }
 }
 
-// MARK: - Tag search suggestions (iPhone)
+// MARK: - Row helpers
 
+#if os(iOS)
 private extension View {
-    /// Attaches native tag search suggestions on iOS; a no-op on macOS, where the
-    /// sidebar already lists every tag. Tapping a suggestion runs `onSelect`.
-    @ViewBuilder
-    func tagSearchSuggestions(
-        _ tags: [String],
-        onSelect: @escaping (String) -> Void
-    ) -> some View {
-        #if os(iOS)
-        self.searchSuggestions {
-            ForEach(tags, id: \.self) { tag in
-                TagSuggestionRow(tag: tag, onSelect: onSelect)
-            }
-        }
-        #else
-        self
-        #endif
+    /// A row of the `PhoneList` page: 20 pt in from the screen edges, `top`
+    /// above it, no system background or separator.
+    func pageRow(top: CGFloat, horizontal: CGFloat = 20) -> some View {
+        listRowInsets(EdgeInsets(top: top, leading: horizontal, bottom: 0, trailing: horizontal))
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 }
 
-#if os(iOS)
-/// One tappable tag suggestion. Lives inside the searchable scope so it can read
-/// `dismissSearch` to close the search UI once a tag is chosen.
-private struct TagSuggestionRow: View {
-    let tag: String
-    let onSelect: (String) -> Void
-    @Environment(\.dismissSearch) private var dismissSearch
+/// One row's slice of the `.card` the iPhone list draws around its rows:
+/// `--card`, a 1 pt `--card-border` ring, radius 14 on the first row's top and
+/// the last row's bottom, a 1 pt `--sep` line under every row but the last.
+private struct RowsCardSegment: View {
+    let isFirst: Bool
+    let isLast: Bool
 
     var body: some View {
-        Button {
-            onSelect(tag)
-            dismissSearch()
-        } label: {
-            Label(tag, systemImage: "tag")
-        }
+        let radius: CGFloat = 14
+        let shape = UnevenRoundedRectangle(topLeadingRadius: isFirst ? radius : 0,
+                                           bottomLeadingRadius: isLast ? radius : 0,
+                                           bottomTrailingRadius: isLast ? radius : 0,
+                                           topTrailingRadius: isFirst ? radius : 0,
+                                           style: .continuous)
+        shape
+            .fill(Palette.card)
+            .overlay {
+                // The ring, without the edges shared with the neighbouring rows.
+                shape
+                    .strokeBorder(Palette.cardBorder, lineWidth: 1)
+                    .mask {
+                        Rectangle()
+                            .padding(.top, isFirst ? 0 : 1)
+                            .padding(.bottom, isLast ? 0 : 1)
+                    }
+            }
+            .overlay(alignment: .bottom) {
+                if !isLast {
+                    RowSeparator()
+                        .padding(.horizontal, 1)
+                }
+            }
     }
 }
 #endif
 
-// MARK: - Row tags
+#if os(macOS)
+// MARK: - Mac list row
 
-/// The compact tag strip shown under each list row: up to three tappable chips
-/// plus a non-interactive "+N" overflow indicator, kept to a single line so it
-/// doesn't inflate row height. Tapping a chip applies that tag as the list
-/// filter via ``onSelectTag``.
+/// The tags under a Mac row: up to three `.tag`s (20 pt, 11 pt) and a "+N"
+/// overflow, 4 pt apart. Tapping a tag applies it as the list filter.
 private struct RowTags: View {
     let tags: [String]
     let onSelectTag: (String) -> Void
@@ -970,12 +1149,12 @@ private struct RowTags: View {
     private let maxVisible = 3
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 4) {
             ForEach(visibleTags, id: \.self) { tag in
-                TagChip(text: tag) { onSelectTag(tag) }
+                TagView(text: tag, size: .small, action: { onSelectTag(tag) })
             }
             if overflow > 0 {
-                TagChip(text: "+\(overflow)")
+                TagView(text: "+\(overflow)", size: .small)
             }
         }
         .lineLimit(1)
@@ -985,24 +1164,16 @@ private struct RowTags: View {
     private var overflow: Int { max(0, tags.count - maxVisible) }
 }
 
-// MARK: - Mac list row
-
-#if os(macOS)
-/// A row of the Mac link list. Draws its own selection — the soft lavender
-/// ``SelectionPill`` (40% while hovered) with the title in
-/// ``Palette/accentText`` — instead of the system highlight, and a
-/// ``Palette/hairline`` separator inset to the text.
+/// A `.mrow` of the Mac link list: the 13 pt medium title (`--sel-text` when
+/// selected), the 11 pt meta line, the tags when the link has any, and the
+/// 12 pt medium visit count. The selected row sits on the `--sel` pill.
 ///
-/// Its trailing accessory swaps on hover: at rest it shows the visit count;
-/// with the cursor over the row the count fades out and native borderless
-/// Copy / Share / Edit / Delete icon buttons fade in *in the same place*. Delete routes through the
-/// same central confirmation as the context menu — it never deletes silently.
-/// The buttons capture their own clicks, and while hidden they ignore
-/// hit-testing so a click there still selects the row.
+/// The trailing count swaps on hover for borderless Copy / Share / Edit /
+/// Delete icon buttons in the same place (not drawn; kept). Delete routes
+/// through the same central confirmation as the context menu.
 private struct MacLinkRow: View {
     let shortURL: ShortURL
     let isSelected: Bool
-    let showsSeparator: Bool
     let onSelect: () -> Void
     let onCopy: () -> Void
     let onEdit: () -> Void
@@ -1010,38 +1181,24 @@ private struct MacLinkRow: View {
     let onSelectTag: (String) -> Void
     @State private var isHovering = false
 
-    /// The text inset: the pill's 8 pt from the column edge plus 12 inside it.
-    private static let textInset: CGFloat = 20
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 12) {
-                ShortURLRowPrimary(shortURL: shortURL, isSelected: isSelected)
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 3) {
+                LinkRowText(shortURL: shortURL, titleSize: 13, metaSize: 11, isSelected: isSelected)
                     .accessibilityElement(children: .combine)
                     .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
                     .accessibilityAction { onSelect() }
-                Spacer(minLength: 8)
-                trailingAccessory
+                if !shortURL.tags.isEmpty {
+                    RowTags(tags: shortURL.tags, onSelectTag: onSelectTag)
+                        .padding(.top, 4)
+                }
             }
-
-            if !shortURL.tags.isEmpty {
-                RowTags(tags: shortURL.tags, onSelectTag: onSelectTag)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            trailingAccessory
         }
-        .padding(.horizontal, Self.textInset)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background { SelectionPill(isSelected: isSelected, isHovering: isHovering) }
-        .overlay(alignment: .bottom) {
-            if showsSeparator {
-                Rectangle()
-                    .fill(Palette.hairline)
-                    .frame(height: 0.5)
-                    .padding(.leading, Self.textInset)
-                    .padding(.trailing, 8)
-                    .accessibilityHidden(true)
-            }
-        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background { MacRowBackground(isSelected: isSelected, isHovering: isHovering) }
         .contentShape(Rectangle())
         .onTapGesture(perform: onSelect)
         .onHover { isHovering = $0 }
@@ -1049,12 +1206,10 @@ private struct MacLinkRow: View {
         .accessibilityElement(children: .contain)
     }
 
-    /// The visit count and the action buttons stacked in one place, cross-fading
-    /// by hover. The ZStack sizes to the wider (buttons) child, so the trailing
-    /// edge doesn't shift between states.
+    /// The visit count and the hover actions in one place, cross-fading.
     private var trailingAccessory: some View {
-        ZStack(alignment: .trailing) {
-            VisitsCountLabel(total: shortURL.visitsSummary.total)
+        ZStack(alignment: .topTrailing) {
+            VisitsCountLabel(total: shortURL.visitsSummary.total, size: 12)
                 .opacity(isHovering ? 0 : 1)
 
             hoverActions
@@ -1083,8 +1238,8 @@ private struct MacLinkRow: View {
     }
 }
 
-/// A native borderless icon button for the row's hover actions:
-/// ``Palette/textSecondary`` at rest, ``Palette/accent`` under the pointer.
+/// A borderless icon button for the row's hover actions: `--text2` at rest,
+/// `--brand-text` under the pointer.
 private struct HoverIconButton: View {
     let systemImage: String
     let label: String
@@ -1108,65 +1263,27 @@ private struct HoverIcon: View {
 
     var body: some View {
         Image(systemName: systemImage)
-            .foregroundStyle(isHovering ? Palette.accent : Palette.textSecondary)
-            .frame(width: 24, height: 24)
+            .font(.system(size: 12))
+            .foregroundStyle(isHovering ? Palette.brand : Palette.text2)
+            .frame(width: 20, height: 20)
             .contentShape(Rectangle())
             .onHover { isHovering = $0 }
     }
 }
 #endif
 
-// MARK: - Filter pill
-
-/// A removable pill shown above the list while a tag filter is active. The ✕
-/// clears the filter.
-private struct FilterPill: View {
-    let tag: String
-    let onClear: () -> Void
-
-    var body: some View {
-        HStack {
-            HStack(spacing: 6) {
-                Image(systemName: "tag.fill")
-                    .font(.caption2)
-                Text(tag)
-                    .font(.subheadline.weight(.medium))
-                    .lineLimit(1)
-                Button(action: onClear) {
-                    Image(systemName: "xmark.circle.fill")
-                        .imageScale(.medium)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Clear tag filter")
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(Palette.accentSoft, in: Capsule())
-            .foregroundStyle(Palette.accentText)
-
-            Spacer(minLength: 0)
-        }
-        .padding(.horizontal)
-        .padding(.vertical, 8)
-    }
-}
-
 /// A redacted stand-in row shown while the first page loads.
 private struct SkeletonRow: View {
     var body: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Placeholder short URL title")
-                    .font(.body.weight(.medium))
                 Text("abc123 · 2 days ago")
-                    .font(.footnote)
             }
             Spacer(minLength: 8)
             Text("00")
-                .font(.footnote.weight(.medium))
-                .monospacedDigit()
         }
-        .padding(.vertical, 4)
+        .layoutFont(13)
     }
 }
 
@@ -1175,7 +1292,7 @@ private struct SkeletonRow: View {
 #if DEBUG
 extension ShortURLListScreen {
     /// Skips the initial load, so a preview's seeded store stays as seeded.
-    fileprivate func skippingInitialLoad() -> ShortURLListScreen {
+    func skippingInitialLoad() -> ShortURLListScreen {
         var copy = self
         copy.loadsOnAppear = false
         return copy
@@ -1184,8 +1301,8 @@ extension ShortURLListScreen {
 
 /// A seeded list for the canvas: titled and untitled links, with and without
 /// tags. On the Mac the second row is selected, so the selection pill shows.
-private struct ShortURLListScreenPreview: View {
-    private static let items: [ShortURL] = {
+struct ShortURLListScreenPreview: View {
+    static let items: [ShortURL] = {
         let now = Date()
         func link(_ code: String, _ title: String?, days: Double, visits: Int, tags: [String] = []) -> ShortURL {
             ShortURL(shortCode: code,
@@ -1207,8 +1324,7 @@ private struct ShortURLListScreenPreview: View {
     }()
 
     @State private var store = ShortURLListStore.preview(items: Self.items)
-    @State private var tagsStore = TagsStore(client: ShlinkClient(
-        baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview"))
+    @State private var tagsStore = TagsStore.preview(tags: ["blog", "launch", "media", "talks"])
     @State private var appModel = AppModel(spotlight: nil)
     #if os(macOS)
     @State private var selection: Route? = .shortURLDetail(Self.items[1])
@@ -1237,13 +1353,15 @@ private struct ShortURLListScreenPreview: View {
     }
 }
 
-#Preview("List, light") {
+#if os(iOS)
+#Preview("PhoneList light") {
     ShortURLListScreenPreview()
         .preferredColorScheme(.light)
 }
 
-#Preview("List, dark") {
+#Preview("PhoneList dark") {
     ShortURLListScreenPreview()
         .preferredColorScheme(.dark)
 }
+#endif
 #endif

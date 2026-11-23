@@ -26,106 +26,96 @@ struct OnboardingView: View {
     }
 }
 
-/// The Welcome screen: identity, the privacy promise, three reassurances, and the
-/// call to connect. The app logo sits atop, clipped to an app-icon-style tile.
+/// The Welcome screen, as layout v3 draws it (`PhoneOnboarding`): the mark,
+/// the "Shlinkly" eyebrow, the 30 pt title, one line about the app, three
+/// checked points with a semibold lead, and "Connect your server" at the
+/// bottom. "What is Shlink?" isn't drawn; it stays, as a text button under it.
 private struct WelcomeScreen: View {
     let onConnect: () -> Void
 
+    private static let points: [(lead: String, text: String)] = [
+        ("It's all yours.", "Private by design and fully open source. No Shlinkly cloud, no middleman."),
+        ("We store nothing.", "There's no Shlinkly backend, so nothing passes through us."),
+        ("Open source.", "Inspect every line on GitHub."),
+    ]
+
     var body: some View {
-        ScrollView {
-            VStack(spacing: 28) {
-                VStack(spacing: 16) {
-                    AppLogoMark()
-
-                    VStack(spacing: 6) {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        BrandMark(side: 56, radius: 14, glyph: 30)
+                            .padding(.bottom, 8)
                         Text("Shlinkly")
-                            .font(.largeTitle.weight(.bold))
-                        Text("A native iOS & Mac client for your self-hosted Shlink.")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
+                            .layoutFont(13, .semibold)
+                            .foregroundStyle(Palette.brand)
+                        Text("Your links, on your own server.")
+                            .layoutFont(30, .semibold, tracking: -0.3)
+                            .foregroundStyle(Palette.text)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityAddTraits(.isHeader)
+                        Text("A native iOS and Mac client for your self-hosted Shlink.")
+                            .layoutFont(15)
+                            .foregroundStyle(Palette.text2)
+                            .lineSpacing(3)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                }
-                .padding(.top, 24)
+                    .padding(.top, 44)
 
-                VStack(spacing: 8) {
-                    Text("We store nothing.")
-                    Text("It's all yours.")
-                }
-                .font(.title.weight(.semibold))
-                .multilineTextAlignment(.center)
-
-                Text("Private by design and fully open source. No Shlinkly cloud, no middleman.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-
-                VStack(alignment: .leading, spacing: 18) {
-                    Promise(
-                        icon: "lock.shield",
-                        text: "Your links and keys stay on your server and devices."
-                    )
-                    Promise(
-                        icon: "icloud.slash",
-                        text: "There's no Shlinkly backend, so nothing passes through us."
-                    )
-                    Promise(
-                        icon: "chevron.left.forwardslash.chevron.right",
-                        text: "Open source. Inspect every line on GitHub."
-                    )
-                }
-                .padding(.horizontal)
-
-                VStack(spacing: 14) {
-                    Button(action: onConnect) {
-                        Text("Connect your server")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity)
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(Self.points, id: \.lead) { point in
+                            HStack(alignment: .top, spacing: 12) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundStyle(Palette.brand)
+                                    .frame(width: 18, height: 18)
+                                    .padding(.top, 2)
+                                    .accessibilityHidden(true)
+                                Text("\(Text(point.lead).fontWeight(.semibold).foregroundStyle(Palette.text)) \(Text(point.text).foregroundStyle(Palette.text2))")
+                                    .layoutFont(15)
+                                    .lineSpacing(3)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                        }
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-
-                    Link("What is Shlink?", destination: URL(string: "https://shlink.io")!)
-                        .font(.subheadline)
+                    .padding(.top, 28)
                 }
-                .padding(.horizontal)
-                .padding(.top, 4)
+                .padding(.horizontal, 20)
+                .frame(maxWidth: 460, alignment: .leading)
+                .frame(maxWidth: .infinity)
             }
+            .scrollBounceBehavior(.basedOnSize)
+
+            VStack(spacing: 4) {
+                Button("Connect your server", action: onConnect)
+                    .buttonStyle(.layoutPrimary)
+                Link("What is Shlink?", destination: URL(string: "https://shlink.io")!)
+                    .buttonStyle(.layoutText)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 12)
             .frame(maxWidth: 460)
             .frame(maxWidth: .infinity)
-            .padding(.bottom, 32)
         }
+        .canvasBackground()
+        #if os(iOS)
+        .toolbar(.hidden, for: .navigationBar)
+        #endif
     }
 }
 
-/// The app logo atop the Welcome screen: the 1024 master scaled down and clipped
-/// to a continuous rounded rectangle so it reads like an app-icon tile.
-private struct AppLogoMark: View {
-    var body: some View {
-        Image("AppLogo")
-            .resizable()
-            .interpolation(.high)
-            .frame(width: 80, height: 80)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .accessibilityHidden(true)
-    }
+#if DEBUG
+#if os(iOS)
+#Preview("PhoneOnboarding light") {
+    NavigationStack { WelcomeScreen {} }
+        .brandTint()
+        .preferredColorScheme(.light)
 }
 
-/// One reassurance row: an icon and a line of copy.
-private struct Promise: View {
-    let icon: String
-    let text: String
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(Palette.accent)
-                .frame(width: 28)
-            Text(text)
-                .font(.callout)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
+#Preview("PhoneOnboarding dark") {
+    NavigationStack { WelcomeScreen {} }
+        .brandTint()
+        .preferredColorScheme(.dark)
 }
+#endif
+#endif

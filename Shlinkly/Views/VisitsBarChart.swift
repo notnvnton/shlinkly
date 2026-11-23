@@ -16,8 +16,9 @@ import ShlinklyCore
 /// the window (see ``ShortURLDetailStore/chartBuckets``) so empty columns still
 /// occupy the axis and the timeline reads continuously.
 ///
-/// Hovering (macOS) or touching (iOS) a bar highlights it and floats a callout
-/// with its exact period and count above it.
+/// Hovering (macOS) or tapping (iOS) a column shows the `.callout` beside it:
+/// it fades in and rises 4 pt over 160 ms (ease-out) and fades out over 120 ms
+/// (ease-in), while the other columns dim to 0.45 over 160 ms.
 struct VisitsBarChart: View {
     let data: [VisitBucket]
     /// The people / bots split of the same columns: drawn as the stacked bars
@@ -49,6 +50,9 @@ struct VisitsBarChart: View {
     /// straight from `chartXSelection`. iOS: the start of the tapped column,
     /// which stays selected until it is tapped again or the tap lands elsewhere.
     @State private var selectedDate: Date?
+    /// The column the callout shows and the dimming follows: `selectedDate`'s
+    /// column, set with the layout's timing (see ``updateShownColumn(for:)``).
+    @State private var shownColumnStart: Date?
     /// The plot area's current width, measured through the chart's proxy so the
     /// bars can be sized in points. Zero until the first layout pass.
     @State private var plotWidth: CGFloat = 0
@@ -84,28 +88,29 @@ struct VisitsBarChart: View {
                 .opacity(barOpacity(for: column.start))
                 .clipShape(columnShape)
             }
-            if let selectedBucket {
-                // A faint guide behind the bars. The callout is *not* an annotation
-                // on this mark: an annotation is drawn at its mark's depth, so tall
-                // bars showed through it. It lives in the chart overlay instead.
-                RuleMark(x: .value("Selected", selectedBucket.start, unit: unit, calendar: calendar))
-                    .foregroundStyle(Palette.hairline)
-                    .zIndex(-1)
-            }
         }
+        // `.bar { transition: opacity .16s ease }`: dimming and un-dimming.
+        .animation(.easeInOut(duration: 0.16), value: shownColumnStart)
         // Continuous date domain — a Range, never an array. (Array/band and
         // Int-index scales both crash Swift Charts at render, so this stays
         // continuous.) The store guarantees start <= end.
         .chartXScale(domain: xDomain)
         .chartYScale(domain: 0...max(yMax, 1))
         .chartYAxis {
-            // Sparse Y ticks, each with a single thin, solid, very light guide
-            // line — no dashes, no heavy gridlines.
-            AxisMarks(position: .leading, values: .automatic(desiredCount: 4)) {
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Palette.hairline)
-                AxisValueLabel()
-                    .foregroundStyle(Palette.textSecondary)
+            // As drawn: three labels (the ceiling, the middle, 0) with a 1 pt
+            // `--sep` line at each, horizontal only. The middle one only when
+            // the ceiling halves into a whole number.
+            AxisMarks(position: .leading, values: yAxisValues) { value in
+                AxisGridLine(stroke: StrokeStyle(lineWidth: 1))
+                    .foregroundStyle(Palette.sep)
+                AxisValueLabel {
+                    if let number = value.as(Int.self) {
+                        Text(number, format: .number)
+                            .layoutFont(Self.yLabelSize)
+                            .monospacedDigit()
+                            .foregroundStyle(Palette.text2)
+                    }
+                }
             }
         }
         .chartXAxis {
@@ -127,7 +132,9 @@ struct VisitsBarChart: View {
                 AxisValueLabel(anchor: labelAnchor(index: value.index, count: value.count)) {
                     if let date = value.as(Date.self) {
                         Text(labelDate(for: date), format: axisLabelFormat)
-                            .foregroundStyle(Palette.textSecondary)
+                            .layoutFont(11)
+                            .monospacedDigit()
+                            .foregroundStyle(Palette.text2)
                             .fixedSize()
                     }
                 }
@@ -158,11 +165,13 @@ struct VisitsBarChart: View {
                             handleTap(at: location, proxy: proxy, geometry: geometry)
                         }
                     #endif
-                    if let selectedBucket,
-                       let placement = calloutPlacement(for: selectedBucket, proxy: proxy, geometry: geometry) {
+                    if let shownBucket,
+                       let placement = calloutPlacement(for: shownBucket, proxy: proxy, geometry: geometry) {
                         placement {
-                            callout(for: selectedBucket)
+                            callout(for: shownBucket)
                         }
+                        // Shown: opacity 1 at its place. Hidden: opacity 0, 4 pt lower.
+                        .transition(.opacity.combined(with: .offset(y: 4)))
                         // Never in the way of a tap or the pointer.
                         .allowsHitTesting(false)
                     }
@@ -177,6 +186,9 @@ struct VisitsBarChart: View {
         #else
         .chartXSelection(value: $selectedDate)
         #endif
+        .onChange(of: selectedDate) { _, newDate in
+            updateShownColumn(for: newDate)
+        }
         .onChange(of: period) { _, _ in selectedDate = nil }
         .onChange(of: grouping) { _, _ in selectedDate = nil }
         .onChange(of: excludeBots) { _, _ in selectedDate = nil }
@@ -223,16 +235,55 @@ struct VisitsBarChart: View {
         return data.first { $0.contains(selectedDate) }
     }
 
-    /// Full strength with nothing selected or for the selected column; with a
-    /// column selected, the others recede.
-    private func barOpacity(for columnStart: Date) -> Double {
-        guard let selectedBucket else { return 1 }
-        return selectedBucket.start == columnStart ? 1 : 0.45
+    /// The column the callout is showing.
+    private var shownBucket: VisitBucket? {
+        guard let shownColumnStart else { return nil }
+        return data.first { $0.start == shownColumnStart }
     }
 
-    /// A column's clip: rounded top corners only (radius `min(4, width / 2)`),
-    /// square at the baseline. The column is one mark, so this is its only
-    /// rounded edge.
+    /// Follows the selection with the layout's timing: the callout appears over
+    /// 160 ms ease-out and disappears over 120 ms ease-in; moving from one
+    /// column to the next moves it straight there, as drawn (only its opacity
+    /// and offset are animated, never its position).
+    private func updateShownColumn(for date: Date?) {
+        let start = date.flatMap { selected in data.first { $0.contains(selected) }?.start }
+        guard start != shownColumnStart else { return }
+        if start == nil {
+            withAnimation(.easeIn(duration: 0.12)) { shownColumnStart = nil }
+        } else if shownColumnStart == nil {
+            withAnimation(.easeOut(duration: 0.16)) { shownColumnStart = start }
+        } else {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) { shownColumnStart = start }
+        }
+    }
+
+    /// Full strength with nothing selected or for the selected column; with a
+    /// column selected, the others recede to 0.45.
+    private func barOpacity(for columnStart: Date) -> Double {
+        guard let shownColumnStart else { return 1 }
+        return shownColumnStart == columnStart ? 1 : 0.45
+    }
+
+    /// The Y labels: the ceiling, its half when whole, and 0.
+    private var yAxisValues: [Int] {
+        let ceiling = max(yMax, 1)
+        return ceiling % 2 == 0 ? [0, ceiling / 2, ceiling] : [0, ceiling]
+    }
+
+    /// Y labels: 10 pt on the Mac, 11 pt on the iPhone.
+    private static var yLabelSize: CGFloat {
+        #if os(macOS)
+        10
+        #else
+        11
+        #endif
+    }
+
+    /// A column's clip: rounded top corners only (4 pt, or half the bar on a
+    /// very thin bar), square at the baseline. The column is one mark, so this
+    /// is its only rounded edge.
     private var columnShape: UnevenRoundedRectangle {
         let radius = min(4, (barWidth ?? 8) / 2)
         return UnevenRoundedRectangle(topLeadingRadius: radius,
@@ -240,20 +291,19 @@ struct VisitsBarChart: View {
                                       style: .continuous)
     }
 
-    /// A column's fill, top to bottom: the translucent bots part down to the
-    /// people level, then a flat, hard change into the people gradient. No
-    /// bots: the people gradient fills the whole column (and carries the
-    /// rounded top).
+    /// A column's fill, top to bottom: `--bar-bots` (the bots, the same hue,
+    /// translucent) down to the people level, then a flat, hard change into the
+    /// `--bar` gradient (the people). No bots: `--bar` fills the whole column.
     private func columnFill(people: Int, bots: Int) -> LinearGradient {
         let total = people + bots
         let level = total > 0 ? CGFloat(bots) / CGFloat(total) : 0
         var stops: [Gradient.Stop] = []
         if level > 0 {
-            stops.append(.init(color: Palette.Bars.bots, location: 0))
-            stops.append(.init(color: Palette.Bars.bots, location: level))
+            stops.append(.init(color: Palette.barBots, location: 0))
+            stops.append(.init(color: Palette.barBots, location: level))
         }
-        stops.append(.init(color: Palette.Bars.peopleTop, location: level))
-        stops.append(.init(color: Palette.Bars.peopleBottom, location: 1))
+        stops.append(.init(color: Palette.barTop, location: level))
+        stops.append(.init(color: Palette.barBottom, location: 1))
         return LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
     }
 
@@ -274,46 +324,73 @@ struct VisitsBarChart: View {
         let plot = geometry[plotAnchor]
         return CalloutPlacement(
             barCenterX: plot.minX + (startX + endX) / 2,
-            top: plot.minY,
-            gap: (barWidth ?? 0) / 2 + 6,
+            top: plot.minY + Self.calloutTop,
+            gap: (barWidth ?? 0) / 2 + 14,
             onTrailingSide: calloutOnTrailingSide(of: bucket)
         )
     }
 
     /// Whether the callout goes to the right of `bucket`'s bar: yes for the bars
-    /// in the left half of the chart, where there is room on that side.
+    /// in the first 55% of the chart (as drawn), where there is room.
     private func calloutOnTrailingSide(of bucket: VisitBucket) -> Bool {
-        guard let index = data.firstIndex(where: { $0.id == bucket.id }) else { return true }
-        return index * 2 < data.count
+        guard let index = data.firstIndex(where: { $0.id == bucket.id }), data.count > 1 else { return true }
+        return Double(index) / Double(data.count - 1) < 0.55
     }
 
-    /// The floating card beside the selected bar: its period and its exact
-    /// count, on an opaque ``Palette/surface`` (not a material: inside the
-    /// chart a material has nothing to blur and came out near-black in light
-    /// mode on iPhone) with the card outline and a soft shadow.
+    /// The callout's distance from the plot's top: 8 pt (Mac), 6 pt (iPhone).
+    private static var calloutTop: CGFloat {
+        #if os(macOS)
+        8
+        #else
+        6
+        #endif
+    }
+
+    /// `.callout`: the card beside the selected column. Its period, its count
+    /// (semibold) and the people / bots split; `--card` (`#2B2A33` in dark) with
+    /// a 1 pt `--card-border` ring and `0 6 16` at 10%, radius 10, 8 pt / 10 pt
+    /// in, at least 118 pt wide. 11 / 14 / 11 pt on the Mac, 12 / 16 / 12 pt on
+    /// the iPhone.
     private func callout(for bucket: VisitBucket) -> some View {
-        let shape = RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-        return VStack(spacing: 1) {
+        let shape = RoundedRectangle(cornerRadius: 10, style: .continuous)
+        return VStack(alignment: .leading, spacing: 1) {
             Text(periodTitle(for: bucket))
-                .font(.caption)
-                .foregroundStyle(Palette.textSecondary)
+                .layoutFont(Self.calloutSmall)
+                .foregroundStyle(Palette.text2)
             Text(countTitle(for: bucket.count))
-                .font(.subheadline.weight(.semibold))
+                .layoutFont(Self.calloutLarge, .semibold)
                 .monospacedDigit()
-                .foregroundStyle(Palette.textPrimary)
+                .foregroundStyle(Palette.text)
             if let detail = breakdownTitle(for: bucket) {
                 Text(detail)
-                    .font(.caption)
+                    .layoutFont(Self.calloutSmall)
                     .monospacedDigit()
-                    .foregroundStyle(Palette.textSecondary)
+                    .foregroundStyle(Palette.text2)
             }
         }
         .fixedSize()
+        .frame(minWidth: 118 - 20, alignment: .leading)
         .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(Palette.surface, in: shape)
+        .padding(.vertical, 8)
+        .background(Palette.calloutBg, in: shape)
         .overlay(shape.strokeBorder(Palette.cardBorder, lineWidth: 1))
-        .shadow(color: .black.opacity(0.08), radius: 6, y: 4)
+        .shadow(color: .black.opacity(0.10), radius: 8, y: 6)
+    }
+
+    private static var calloutSmall: CGFloat {
+        #if os(macOS)
+        11
+        #else
+        12
+        #endif
+    }
+
+    private static var calloutLarge: CGFloat {
+        #if os(macOS)
+        14
+        #else
+        16
+        #endif
     }
 
     /// The selected column's headline count. With bots excluded the bars count

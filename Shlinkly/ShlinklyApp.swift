@@ -28,11 +28,6 @@ struct ShlinklyApp: App {
     #endif
 
     init() {
-        #if os(iOS)
-        // Brand-colored selected segments on every native segmented control,
-        // set before the first picker exists.
-        NativeControlAppearance.configure()
-        #endif
         let model = AppModel()
         // Credentials come from Keychain-backed instances: bootstrap brings the
         // active server online, or leaves the app in onboarding when none exist.
@@ -67,6 +62,14 @@ struct ShlinklyApp: App {
             }
         }
         #endif
+
+        // Settings is its own window on the Mac (`MacSettings`): the app menu's
+        // "Settings…" (⌘,) opens it. The iPhone presents Settings as a sheet.
+        Settings {
+            SettingsView()
+                .environment(appModel)
+                .brandTint()
+        }
 
         // The menu-bar item is no longer a SwiftUI `MenuBarExtra` scene: it's a
         // hand-managed `NSStatusItem` driven by `MenuBarController` (owned by the

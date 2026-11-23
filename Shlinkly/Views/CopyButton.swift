@@ -31,7 +31,7 @@ struct CopyButton: View {
         } label: {
             Image(systemName: didCopy ? "checkmark" : "doc.on.doc")
                 .font(.subheadline)
-                .foregroundStyle(Palette.accent)
+                .foregroundStyle(Palette.brand)
                 .contentTransition(.symbolEffect(.replace))
                 // Fixed box so the doc → checkmark swap can't nudge layout.
                 .frame(width: 22, height: 22)

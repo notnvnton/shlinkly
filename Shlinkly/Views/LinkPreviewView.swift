@@ -43,54 +43,77 @@ struct LinkPreviewView: View {
         }
     }
 
+    /// The preview row as drawn: the site icon on a `--npastel` tile, the page
+    /// title (medium) over the host (`--text2`), and "↗". Mac: 52 pt tall, a
+    /// 28 pt tile (radius 7), 13 / 11 pt, 14 pt in. iPhone: at least 56 pt, a
+    /// 30 pt tile (radius 8), 15 / 13 pt, 16 pt in.
     private var row: some View {
         HStack(spacing: 12) {
             icon
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(Palette.textPrimary)
-                    .lineLimit(2)
-                    .truncationMode(.middle)
+                    .layoutFont(Metrics.titleSize, .medium)
+                    .foregroundStyle(Palette.text)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .redacted(reason: phase == .loading ? .placeholder : [])
                 Text(host)
-                    .font(.footnote)
-                    .foregroundStyle(Palette.textSecondary)
+                    .layoutFont(Metrics.hostSize)
+                    .foregroundStyle(Palette.text2)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
-            Spacer(minLength: 0)
-            Image(systemName: "arrow.up.right")
-                .font(.footnote.weight(.medium))
-                .foregroundStyle(Palette.accent)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Text("↗")
+                .layoutFont(Metrics.titleSize)
+                .foregroundStyle(Palette.text2)
                 .accessibilityHidden(true)
         }
-        .padding(.horizontal, Space.cardInset)
-        .padding(.vertical, 12)
-        .frame(minHeight: Space.rowTwo)
+        .padding(.horizontal, Metrics.inset)
+        .frame(minHeight: Metrics.height)
         .contentShape(Rectangle())
     }
 
-    /// The site icon, 32×32 on a ``Palette/sunken`` tile; a globe when there is
+    private enum Metrics {
+        #if os(macOS)
+        static let height: CGFloat = 52
+        static let tile: CGFloat = 28
+        static let tileRadius: CGFloat = 7
+        static let glyph: CGFloat = 13
+        static let titleSize: CGFloat = 13
+        static let hostSize: CGFloat = 11
+        static let inset: CGFloat = 14
+        #else
+        static let height: CGFloat = 56
+        static let tile: CGFloat = 30
+        static let tileRadius: CGFloat = 8
+        static let glyph: CGFloat = 14
+        static let titleSize: CGFloat = 15
+        static let hostSize: CGFloat = 13
+        static let inset: CGFloat = 16
+        #endif
+    }
+
+    /// The site icon on the `--npastel` tile; a globe in `--text2` when there is
     /// none (or while it loads), a link symbol for the plain-link fallback.
     private var icon: some View {
-        RoundedRectangle(cornerRadius: Radius.control, style: .continuous)
-            .fill(Palette.sunken)
-            .frame(width: 32, height: 32)
+        RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous)
+            .fill(Palette.npastel)
+            .frame(width: Metrics.tile, height: Metrics.tile)
             .overlay {
                 if case .loaded(_, let image?) = phase {
                     image
                         .resizable()
                         .interpolation(.high)
                         .scaledToFit()
-                        .frame(width: 20, height: 20)
+                        .frame(width: Metrics.tile - 10, height: Metrics.tile - 10)
                 } else {
                     Image(systemName: phase == .failed ? "link" : "globe")
-                        .font(.system(size: 15))
-                        .foregroundStyle(Palette.textSecondary)
+                        .font(.system(size: Metrics.glyph))
+                        .foregroundStyle(Palette.text2)
                 }
             }
-            .clipShape(RoundedRectangle(cornerRadius: Radius.control, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Metrics.tileRadius, style: .continuous))
             .accessibilityHidden(true)
     }
 
