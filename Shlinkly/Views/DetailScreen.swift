@@ -27,6 +27,8 @@ struct DetailScreen: View {
     /// Drives the Copy / Copy link button's brief "Copied".
     @State private var didCopy = false
     @State private var copyResetTask: Task<Void, Never>?
+    /// The QR code sheet (`PhoneQR` / `MacQRSheet`).
+    @State private var showQRCode = false
     @Environment(\.openURL) private var openURL
 
     /// The active server's client and the shared tag cache, threaded so the edit
@@ -81,20 +83,13 @@ struct DetailScreen: View {
     private var shortURL: ShortURL { store.shortURL }
 
     var body: some View {
-        ScrollView {
-            #if os(macOS)
-            macColumn
-            #else
-            phoneColumn
-            #endif
-        }
-        .canvasBackground()
+        screen
         .navigationTitle(headerTitle)
         #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom, spacing: 0) { phoneBottomBar }
-        #endif
         .toolbar { detailToolbar }
+        #endif
         .sheet(isPresented: $isEditing) {
             ShortURLFormView(mode: .edit(store.shortURL), client: client, tagsStore: tagsStore) { updated in
                 // Refresh both the detail in place and the row behind it.
@@ -102,6 +97,10 @@ struct DetailScreen: View {
                 listStore.applyUpdated(updated)
             }
             .brandTint()
+        }
+        .sheet(isPresented: $showQRCode) {
+            QRCodeSheet(shortURL: store.shortURL)
+                .brandTint()
         }
         .shortURLDeleteConfirmation(item: $pendingDelete) { url in
             Task { await runDelete(url) }
@@ -118,35 +117,63 @@ struct DetailScreen: View {
         }
     }
 
+    /// Mac: the drawn header row above the scrolling column. iPhone: one
+    /// scrolling page on `--bg`.
+    @ViewBuilder
+    private var screen: some View {
+        #if os(macOS)
+        VStack(spacing: 0) {
+            macHeaderRow
+            ScrollView {
+                macColumn
+            }
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        #else
+        ScrollView {
+            phoneColumn
+        }
+        .canvasBackground()
+        #endif
+    }
+
     // MARK: - Toolbar & actions
 
-    /// Mac (`MacMain`): the period control centered in the title bar, ⋯ on the
-    /// right. It belongs to this screen's toolbar, so with no link selected (the
-    /// placeholder) it isn't shown. iPhone (`PhoneDetail`): "Edit" and ⋯ on the
-    /// right, no title (the back button reads "‹ Links").
+    #if os(macOS)
+    /// The detail column's 52 pt header row (`MacMain`), on the traffic
+    /// lights' line: the period control centered in the column, ⋯ 14 pt from
+    /// the trailing edge. It belongs to this screen, so with no link selected
+    /// (the placeholder) it isn't shown.
+    private var macHeaderRow: some View {
+        MacTitleRow(height: 52) { _ in
+            ZStack {
+                MacSegmented("Period", selection: periodBinding, options: periodOptions)
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Menu {
+                        editButton
+                        deleteButton
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .menuStyle(.button)
+                    .menuIndicator(.hidden)
+                    .buttonStyle(.macSquare)
+                    .help("More")
+                    .accessibilityLabel("More")
+                    .padding(.trailing, 14)
+                }
+            }
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    /// iPhone (`PhoneDetail`): "Edit" and ⋯ on the right, no title (the back
+    /// button reads "‹ Links").
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
-        #if os(macOS)
-        ToolbarItem(placement: .principal) {
-            MacSegmented("Period", selection: periodBinding, options: periodOptions)
-        }
-        .withoutSharedBackground()
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                editButton
-                deleteButton
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .menuStyle(.button)
-            .menuIndicator(.hidden)
-            .buttonStyle(.macSquare)
-            .help("More")
-            .accessibilityLabel("More")
-        }
-        .withoutSharedBackground()
-        #else
         ToolbarItem(placement: .principal) {
             Color.clear.frame(width: 1, height: 1)
         }
@@ -169,8 +196,8 @@ struct DetailScreen: View {
             .accessibilityLabel("More")
         }
         .withoutSharedBackground()
-        #endif
     }
+    #endif
 
     private var editButton: some View {
         Button {
@@ -259,7 +286,7 @@ struct DetailScreen: View {
 
     /// Title (20 pt semibold), short URL (14 pt medium, `--brand-text`),
     /// destination (12 pt `--text2`), the tags with the creation date, then
-    /// Copy / Share / Open (`.mbtn`). 16 pt / 18 pt in, 6 pt apart.
+    /// Copy / Share / Open / QR code (`.mbtn`). 16 pt / 18 pt in, 6 pt apart.
     private var macHeaderCard: some View {
         MacCard {
             VStack(alignment: .leading, spacing: 6) {
@@ -295,6 +322,8 @@ struct DetailScreen: View {
                         Button("Open") { openURL(destinationURL) }
                             .help("Open the destination in the browser")
                     }
+                    Button("QR code") { showQRCode = true }
+                        .help("Show the QR code")
                 }
                 .buttonStyle(.mac)
                 .padding(.top, 8)
@@ -374,6 +403,8 @@ struct DetailScreen: View {
                 }
                 .padding(.top, 18)
             }
+            qrCodeRow
+                .padding(.top, destinationURL == nil ? 18 : 10)
             phoneVisits
                 .padding(.top, 22)
             VisitsChartCard(store: store)
@@ -419,6 +450,36 @@ struct DetailScreen: View {
             }
             .padding(.top, 6)
         }
+    }
+
+    /// "QR code ›": a 52 pt card row under the preview card, opening the QR
+    /// code sheet.
+    private var qrCodeRow: some View {
+        Button {
+            showQRCode = true
+        } label: {
+            LayoutCard {
+                HStack(spacing: 12) {
+                    QRRowGlyph()
+                        .stroke(Palette.brand, style: StrokeStyle(lineWidth: 1.6 * 20 / 22, lineJoin: .round))
+                        .frame(width: 20, height: 20)
+                        .accessibilityHidden(true)
+                    Text("QR code")
+                        .layoutFont(16)
+                        .foregroundStyle(Palette.text)
+                    Spacer(minLength: 8)
+                    Text("›")
+                        .layoutFont(15)
+                        .foregroundStyle(Palette.text2)
+                        .accessibilityHidden(true)
+                }
+                .padding(.horizontal, 16)
+                .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("QR code")
     }
 
     /// "Visits": a card with the period control, the three metric tiles and
@@ -564,6 +625,22 @@ struct DetailScreen: View {
         Binding(get: { store.excludeBots }, set: { store.excludeBots = $0 })
     }
 }
+
+#if os(iOS)
+/// The QR row's glyph as `PhoneDetail` draws it (a 22-unit box at 20 pt):
+/// three 6-unit squares and two small ones in the bottom-right corner.
+private struct QRRowGlyph: Shape {
+    func path(in rect: CGRect) -> Path {
+        let unit = min(rect.width, rect.height) / 22
+        var path = Path()
+        for square in [(3.5, 3.5, 6.0), (12.5, 3.5, 6.0), (3.5, 12.5, 6.0), (12.5, 12.5, 2.5), (16.0, 16.0, 2.5)] {
+            path.addRect(CGRect(x: rect.minX + square.0 * unit, y: rect.minY + square.1 * unit,
+                                width: square.2 * unit, height: square.2 * unit))
+        }
+        return path
+    }
+}
+#endif
 
 #if os(macOS)
 private typealias PeriodOptionValue = MacSegmented<ShortURLDetailStore.Period>.Option

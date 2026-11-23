@@ -51,6 +51,11 @@ struct ShortURLListScreen: View {
     /// `false` only in previews, whose store is seeded and must not hit a
     /// server.
     private var loadsOnAppear = true
+    #if os(macOS)
+    /// Shows the sidebar again: set while the sidebar is hidden, so its toggle
+    /// sits at the start of the list header (see ``showingSidebarToggle(_:)``).
+    private var showSidebar: (() -> Void)?
+    #endif
     #if os(iOS)
     /// Whether the search card's field has focus; choosing a tag suggestion
     /// clears it, closing the keyboard.
@@ -139,7 +144,9 @@ struct ShortURLListScreen: View {
     var body: some View {
         screen
         .navigationTitle("Links")
+        #if os(iOS)
         .toolbar { toolbarContent }
+        #endif
         .sheet(item: $formRoute) { route in
             Group {
                 switch route {
@@ -502,19 +509,21 @@ struct ShortURLListScreen: View {
 
     // MARK: - Screen
 
-    /// `MacMain` list column: the gray search field under the title bar, then
-    /// the rows. `PhoneList`: one scrolling page (large title, search card, tag
+    /// `MacMain` list column: the header row, the gray search field 8 pt
+    /// under it, then the rows. `PhoneList`: one scrolling page (large title, search card, tag
     /// chips, the rows card) with "New link" in the bottom bar.
     @ViewBuilder
     private var screen: some View {
         #if os(macOS)
         VStack(spacing: 0) {
+            macHeader
             macSearchField
             if let tag = store.activeTag {
                 macFilterPill(tag)
             }
             macContent
         }
+        .ignoresSafeArea(.container, edges: .top)
         #else
         phoneList
             .canvasBackground()
@@ -529,6 +538,43 @@ struct ShortURLListScreen: View {
 
     #if os(macOS)
     // MARK: - Mac list column
+
+    /// The list column's 52 pt header row (`MacMain`), on the traffic lights'
+    /// line: "Links" (15 pt semibold) 18 pt in, Refresh, Sort and "+" at the
+    /// trailing edge, the last one 12 pt in, everything 10 pt apart (the
+    /// `.titlebar` gap). "Links" truncates before it can reach the buttons.
+    /// With the sidebar hidden its toggle comes first, 12 pt after the
+    /// traffic lights, and "Links" 12 pt after the toggle.
+    private var macHeader: some View {
+        MacTitleRow(height: 52) { lightsTrailing in
+            HStack(spacing: 0) {
+                if let showSidebar {
+                    SidebarToggleButton(isSidebarVisible: false, action: showSidebar)
+                        .padding(.leading, (lightsTrailing ?? 0) + 12)
+                    macHeaderTitle
+                        .padding(.leading, 12)
+                } else {
+                    macHeaderTitle
+                        .padding(.leading, 18)
+                }
+                Spacer(minLength: 10)
+                macHeaderButtons
+                    .fixedSize()
+                    .padding(.trailing, 12)
+            }
+        }
+    }
+
+    /// "Links". Clicks fall through to the row, so it drags the window too.
+    private var macHeaderTitle: some View {
+        Text("Links")
+            .layoutFont(15, .semibold)
+            .foregroundStyle(Palette.text)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .allowsHitTesting(false)
+            .accessibilityAddTraits(.isHeader)
+    }
 
     /// The search field under the list column's title bar: 28 pt, radius 7,
     /// `--seg-track`, a 12 pt magnifier, 13 pt text.
@@ -952,13 +998,12 @@ struct ShortURLListScreen: View {
 
     // MARK: - Toolbar & bindings
 
+    #if os(iOS)
     /// iPhone: the gear and the server pill (no inline title: the page draws
-    /// its large "Links"), swapped for Cancel / Delete while selecting. Mac: the
-    /// list column's title bar, "Links" with the square Refresh, Sort and "+"
-    /// buttons.
+    /// its large "Links"), swapped for Cancel / Delete while selecting. The Mac
+    /// has no toolbar items: its header row is drawn (``macHeader``).
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        #if os(iOS)
         if isSelecting {
             ToolbarItem(placement: .topBarLeading) {
                 Button("Cancel") { exitSelection() }
@@ -998,40 +1043,13 @@ struct ShortURLListScreen: View {
             }
             .withoutSharedBackground()
         }
-        #else
-        // `MacMain`: "Links" at the column's leading edge, Refresh, Sort and
-        // "+" together at its trailing edge, 6 pt apart (one item, so the
-        // spacing is ours, not the toolbar's).
-        if #available(macOS 26, *) {
-            // The system title is "Links" (`.navigationTitle`), truncating
-            // with an ellipsis as the column narrows; the flexible spacer pushes
-            // the buttons to the trailing edge, so they never touch it.
-            ToolbarSpacer(.flexible)
-            ToolbarItem(placement: .primaryAction) {
-                macHeaderButtons
-            }
-            .withoutSharedBackground()
-        } else {
-            // Below 26 the system title is hidden and "Links" is our own text,
-            // with 12 pt clear before it.
-            ToolbarItem(placement: .navigation) {
-                Text("Links")
-                    .layoutFont(15, .semibold)
-                    .foregroundStyle(Palette.text)
-                    .accessibilityAddTraits(.isHeader)
-                    .padding(.leading, 12)
-            }
-            ToolbarItem(placement: .primaryAction) {
-                macHeaderButtons
-            }
-        }
-        #endif
     }
+    #endif
 
     #if os(macOS)
-    /// Refresh, Sort and "+", 6 pt apart.
+    /// Refresh, Sort and "+", 10 pt apart (the `.titlebar` gap).
     private var macHeaderButtons: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: 10) {
             refreshButton
             sortMenu
             addMenu
@@ -1158,6 +1176,19 @@ struct ShortURLListScreen: View {
         }
     }
 }
+
+#if os(macOS)
+extension ShortURLListScreen {
+    /// Puts the sidebar toggle at the start of the list header (pass `nil` to
+    /// leave it out): used while the sidebar is hidden, so it can be shown
+    /// again.
+    func showingSidebarToggle(_ action: (() -> Void)?) -> ShortURLListScreen {
+        var copy = self
+        copy.showSidebar = action
+        return copy
+    }
+}
+#endif
 
 // MARK: - Tag search suggestions (iPhone)
 

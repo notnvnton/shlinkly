@@ -49,6 +49,9 @@ struct ShlinklyApp: App {
                     MacWindowManager.shared.captureMainWindow(window)
                 })
         }
+        // No system title or title bar: the traffic lights stay, and the
+        // columns draw the header rows themselves (`MacMain`, ``MacTitleRow``).
+        .windowStyle(.hiddenTitleBar)
         #if SPARKLE
         // Direct-distribution only: a standard "Check for Updates…" item in the app
         // menu, wired to Sparkle and disabled while a check can't run. Compiled out of

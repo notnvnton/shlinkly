@@ -3,6 +3,8 @@
 //  Shlinkly
 //
 
+import Foundation
+import UniformTypeIdentifiers
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -19,6 +21,22 @@ enum Clipboard {
         let pasteboard = NSPasteboard.general
         pasteboard.clearContents()
         pasteboard.setString(string, forType: .string)
+        #endif
+    }
+
+    /// Copies a QR code image, replacing the pasteboard's contents: the PNG,
+    /// plus the SVG as `public.svg-image` when one is given (the Mac's SVG
+    /// format; the iPhone copies the PNG only).
+    static func copyImage(png: Data, svg: Data? = nil) {
+        #if os(iOS)
+        UIPasteboard.general.setData(png, forPasteboardType: UTType.png.identifier)
+        #elseif os(macOS)
+        let pasteboard = NSPasteboard.general
+        pasteboard.clearContents()
+        pasteboard.setData(png, forType: .png)
+        if let svg {
+            pasteboard.setData(svg, forType: NSPasteboard.PasteboardType(UTType.svg.identifier))
+        }
         #endif
     }
 

@@ -96,16 +96,17 @@ private struct ConfiguredRoot: View {
     var body: some View {
         #if os(macOS)
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            // 216 pt panel plus its 8 pt inset (`MacMain`). The system's sidebar
-            // toggle is removed here, on the sidebar column (where the modifier
-            // takes effect); ours sits at the right end of the panel's top row.
+            // 216 pt panel plus its 8 pt inset (`MacMain`). Our sidebar toggle
+            // sits at the right end of the panel's top row.
             TagSidebar(listStore: listStore, tagsStore: tagsStore, onToggleSidebar: { toggleSidebar() })
                 .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
         } content: {
-            // With the sidebar hidden, the removal above no longer applies (its
-            // view is gone), so the system's own toggle shows: the only one.
+            // With the sidebar hidden, the same toggle sits at the start of the
+            // list header, after the traffic lights: always exactly one.
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection, detailDismissCount: detailDismissCount, showSettings: $showSettings)
+                .showingSidebarToggle(sidebarRevealAction)
+                .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 300, ideal: 330)
         } detail: {
             if let selection {
@@ -114,11 +115,13 @@ private struct ConfiguredRoot: View {
                 DetailPlaceholder()
             }
         }
-        // The title bar as drawn: no toolbar background (one continuous
-        // surface). Below macOS 26 the list column draws its own "Links" in
-        // place of the system title; from 26 the system title is "Links".
-        .removingToolbarTitle()
-        .toolbarBackground(.hidden, for: .windowToolbar)
+        // The title bar as drawn: the columns draw their own header rows
+        // (``MacTitleRow``), so the window has no system title (the scene's
+        // `.hiddenTitleBar`), no toolbar and no system sidebar toggle in any
+        // state. ⌃⌘S and View › Toggle Sidebar belong to the split view, not
+        // the toolbar, and keep working.
+        .toolbar(removing: .sidebarToggle)
+        .hidingWindowToolbar()
         .onChange(of: listStore.items.first?.id) { _, _ in
             autoSelectFirstIfNeeded()
         }
@@ -239,6 +242,12 @@ private struct ConfiguredRoot: View {
     }
 
     #if os(macOS)
+    /// The list header's "show sidebar" action, only while the sidebar is hidden.
+    private var sidebarRevealAction: (() -> Void)? {
+        guard columnVisibility != .all else { return nil }
+        return { toggleSidebar() }
+    }
+
     /// Hides or shows the sidebar column.
     private func toggleSidebar() {
         withAnimation {
@@ -284,6 +293,25 @@ private struct TagSidebar: View {
     }
 
     var body: some View {
+        VStack(spacing: 0) {
+            // The panel's 44 pt top row: the traffic lights (system) on the
+            // left, the toggle 10 pt from the panel's right edge.
+            MacTitleRow(height: 44) { _ in
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    SidebarToggleButton(isSidebarVisible: true, action: onToggleSidebar)
+                }
+                .padding(.trailing, 10)
+            }
+            tagList
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .sidebarBackground()
+        .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
+        .task { tagsStore.loadIfNeeded() }
+    }
+
+    private var tagList: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
@@ -316,15 +344,6 @@ private struct TagSidebar: View {
         .focusEffectDisabled()
         .onKeyPress(.upArrow) { move(by: -1) }
         .onKeyPress(.downArrow) { move(by: 1) }
-        .sidebarBackground()
-        .toolbar {
-            ToolbarItem(placement: .automatic) {
-                SidebarToggleButton(isSidebarVisible: true, action: onToggleSidebar)
-            }
-            .withoutSharedBackground()
-        }
-        .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
-        .task { tagsStore.loadIfNeeded() }
     }
 
     /// Every row in order, for keyboard movement.
@@ -357,18 +376,15 @@ private struct TagSidebar: View {
 }
 
 private extension View {
-    /// Hides the system window title on macOS 15, where the list column draws
-    /// its own "Links" in its place. From macOS 26 the system title *is* the
-    /// list's "Links" (it truncates with an ellipsis as the column narrows), so
-    /// it stays. On 14 the API doesn't exist and the system title stays too.
+    /// Hides the window toolbar: the header rows are drawn by the columns.
+    /// `toolbarVisibility(_:for:)` from macOS 15, its predecessor
+    /// `toolbar(_:for:)` (macOS 13) below.
     @ViewBuilder
-    func removingToolbarTitle() -> some View {
-        if #available(macOS 26, *) {
-            self
-        } else if #available(macOS 15, *) {
-            toolbar(removing: .title)
+    func hidingWindowToolbar() -> some View {
+        if #available(macOS 15, *) {
+            toolbarVisibility(.hidden, for: .windowToolbar)
         } else {
-            self
+            toolbar(.hidden, for: .windowToolbar)
         }
     }
 
@@ -430,13 +446,19 @@ private struct SidebarRow: View {
 /// layout's text colors).
 private struct DetailPlaceholder: View {
     var body: some View {
-        ContentUnavailableView {
-            Label("Select a link", systemImage: "link")
-                .foregroundStyle(Palette.text)
-        } description: {
-            Text("Choose a short URL to see its details.")
-                .foregroundStyle(Palette.text2)
+        VStack(spacing: 0) {
+            // The detail header row without controls, so the window still
+            // drags from here.
+            MacTitleRow(height: 52) { _ in Color.clear }
+            ContentUnavailableView {
+                Label("Select a link", systemImage: "link")
+                    .foregroundStyle(Palette.text)
+            } description: {
+                Text("Choose a short URL to see its details.")
+                    .foregroundStyle(Palette.text2)
+            }
         }
+        .ignoresSafeArea(.container, edges: .top)
     }
 }
 #endif
@@ -447,6 +469,7 @@ private struct DetailPlaceholder: View {
 /// The whole Mac window as `MacMain` draws it: sidebar, list column and detail
 /// column, from seeded stores (nothing talks to a server).
 private struct MacMainPreview: View {
+    var sidebarVisible = true
     @State private var listStore = ShortURLListStore.preview(items: ShortURLListScreenPreview.items)
     @State private var tagsStore = TagsStore.preview(tags: ["books", "library", "test", "website"])
     @State private var appModel = AppModel(spotlight: nil)
@@ -454,7 +477,7 @@ private struct MacMainPreview: View {
 
     var body: some View {
         let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: .constant(sidebarVisible ? .all : .doubleColumn)) {
             TagSidebar(listStore: listStore, tagsStore: tagsStore, onToggleSidebar: {})
                 .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 200, ideal: 224, max: 280)
@@ -462,12 +485,14 @@ private struct MacMainPreview: View {
             ShortURLListScreen(store: listStore, tagsStore: tagsStore, client: client, selection: $selection,
                                detailDismissCount: 0, showSettings: .constant(false))
                 .skippingInitialLoad()
+                .showingSidebarToggle(sidebarVisible ? nil : {})
+                .toolbar(removing: .sidebarToggle)
                 .navigationSplitViewColumnWidth(min: 300, ideal: 330)
         } detail: {
             DetailScreenPreviewData.screen(period: .allTime)
         }
-        .removingToolbarTitle()
-        .toolbarBackground(.hidden, for: .windowToolbar)
+        .toolbar(removing: .sidebarToggle)
+        .hidingWindowToolbar()
         .background { WindowBackdrop() }
         .environment(appModel)
         .brandTint()
@@ -483,5 +508,10 @@ private struct MacMainPreview: View {
 #Preview("MacMain dark") {
     MacMainPreview()
         .preferredColorScheme(.dark)
+}
+
+#Preview("MacMain, sidebar hidden") {
+    MacMainPreview(sidebarVisible: false)
+        .preferredColorScheme(.light)
 }
 #endif
