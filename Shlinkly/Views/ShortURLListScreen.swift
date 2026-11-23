@@ -48,6 +48,9 @@ struct ShortURLListScreen: View {
     /// `Clipboard.containsProbableURL()`, which never reveals the contents (no iOS
     /// "pasted from" banner). Shared by iOS and macOS.
     @State private var clipboardHasURL = false
+    /// `false` only in previews, whose store is seeded and must not hit a
+    /// server.
+    private var loadsOnAppear = true
 
     #if os(iOS)
     /// Bumped on each copy to fire a light haptic via `.sensoryFeedback`.
@@ -84,6 +87,8 @@ struct ShortURLListScreen: View {
     @State private var heldSelection: Route?
     @State private var heldDismissCount = 0
     @State private var releaseHeldSelectionTask: Task<Void, Never>?
+    /// Whether the link list has keyboard focus, so ↑/↓ move the selection.
+    @FocusState private var isListFocused: Bool
 
     private static let refreshLog = Logger(subsystem: "de.ahodge.shlinkly", category: "ListRefresh")
 
@@ -133,21 +138,25 @@ struct ShortURLListScreen: View {
             }
             content
         }
+        .canvasBackground()
         .navigationTitle("Links")
         .toolbar { toolbarContent }
         .searchable(text: searchBinding, prompt: Text("Search links"))
         .tagSearchSuggestions(tagSuggestions) { store.applyTagFromSearch($0) }
         .sheet(item: $formRoute) { route in
-            switch route {
-            case .create(let prefill):
-                ShortURLFormView(mode: .create, client: client, tagsStore: tagsStore, initialLongURL: prefill) { result in
-                    store.insertCreated(result)
-                }
-            case .edit(let url):
-                ShortURLFormView(mode: .edit(url), client: client, tagsStore: tagsStore) { result in
-                    store.applyUpdated(result)
+            Group {
+                switch route {
+                case .create(let prefill):
+                    ShortURLFormView(mode: .create, client: client, tagsStore: tagsStore, initialLongURL: prefill) { result in
+                        store.insertCreated(result)
+                    }
+                case .edit(let url):
+                    ShortURLFormView(mode: .edit(url), client: client, tagsStore: tagsStore) { result in
+                        store.applyUpdated(result)
+                    }
                 }
             }
+            .brandTint()
         }
         .shortURLDeleteConfirmation(item: $pendingDelete) { url in
             Task { await runDelete(url) }
@@ -196,6 +205,7 @@ struct ShortURLListScreen: View {
         }
         .task {
             clipboardHasURL = await Clipboard.containsProbableURL()
+            guard loadsOnAppear else { return }
             tagsStore.loadIfNeeded()
             guard !didInitialLoad else { return }
             didInitialLoad = true
@@ -520,34 +530,52 @@ struct ShortURLListScreen: View {
 
     private var listView: some View {
         #if os(macOS)
-        List(selection: $selection) {
-            ForEach(store.items) { item in
-                HoverableLinkRow(
-                    shortURL: item,
-                    onCopy: { copyShortURL(item) },
-                    onEdit: { formRoute = .edit(item) },
-                    onDelete: { requestSingleDelete(item) },
-                    onSelectTag: { store.setActiveTag($0) }
-                )
-                .tag(Route.shortURLDetail(item))
-                .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
-                .contextMenu {
-                    copyButton(item)
-                    shareLink(item)
-                    Divider()
-                    editButton(item)
-                    Divider()
-                    deleteButton(item)
-                }
-            }
+        // Not a `List`: the Mac's `List` draws its selection in the system
+        // accent color (blue on most Macs) and offers no way to replace it. A
+        // lazy stack draws the soft lavender pill itself and keeps the same
+        // `selection` binding, so the detail column, the refresh resync and the
+        // ListRefresh restore all work unchanged. ↑/↓ move the selection while
+        // the list has focus (a click on a row gives it focus).
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(store.items) { item in
+                        MacLinkRow(
+                            shortURL: item,
+                            isSelected: item.id == selectedLinkID,
+                            showsSeparator: item.id != store.items.last?.id,
+                            onSelect: { select(item) },
+                            onCopy: { copyShortURL(item) },
+                            onEdit: { formRoute = .edit(item) },
+                            onDelete: { requestSingleDelete(item) },
+                            onSelectTag: { store.setActiveTag($0) }
+                        )
+                        .id(item.id)
+                        .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
+                        .contextMenu {
+                            copyButton(item)
+                            shareLink(item)
+                            Divider()
+                            editButton(item)
+                            Divider()
+                            deleteButton(item)
+                        }
+                    }
 
-            if store.state == .loadingMore {
-                loadMoreFooter
+                    if store.state == .loadingMore {
+                        loadMoreFooter
+                    }
+                }
+                .padding(.vertical, 6)
+                .animation(Self.listAnimation, value: store.items)
             }
+            .focusable()
+            .focused($isListFocused)
+            .focusEffectDisabled()
+            .onKeyPress(.upArrow) { moveSelection(by: -1, proxy: proxy) }
+            .onKeyPress(.downArrow) { moveSelection(by: 1, proxy: proxy) }
+            .accessibilityLabel("Links")
         }
-        .listStyle(.inset)
-        .refreshable { await store.refresh() }
-        .animation(Self.listAnimation, value: store.items)
         #else
         List(selection: $selectedIDs) {
             ForEach(store.items) { item in
@@ -562,16 +590,18 @@ struct ShortURLListScreen: View {
                         RowTags(tags: item.tags) { store.setActiveTag($0) }
                     }
                 }
+                .listRowBackground(Palette.surface)
+                .listRowSeparatorTint(Palette.hairline)
                 .tag(item.id)
                 .onAppear { store.loadNextPageIfNeeded(currentItem: item) }
                 // Leading: full-swipe copies. Kept as its own block so a Pin
                 // button can later sit alongside Copy without restructuring.
                 .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                    copyButton(item).tint(.accentColor)
+                    copyButton(item).tint(Palette.accent)
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     swipeDeleteButton(item)
-                    editButton(item).tint(.accentColor)
+                    editButton(item).tint(Palette.accent)
                     swipeShareButton(item)
                 }
                 .contextMenu {
@@ -593,7 +623,9 @@ struct ShortURLListScreen: View {
                 loadMoreFooter
             }
         }
-        .listStyle(.plain)
+        // The flat matte look of build 1: inset cards of rows on the canvas.
+        .listStyle(.insetGrouped)
+        .scrollContentBackground(.hidden)
         .scrollDismissesKeyboard(.interactively)
         .environment(\.editMode, editModeBinding)
         .refreshable { await store.refresh() }
@@ -611,16 +643,63 @@ struct ShortURLListScreen: View {
             Spacer()
         }
         .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
         .padding(.vertical, 8)
     }
+
+    #if os(macOS)
+    // MARK: - Mac selection & keyboard
+
+    /// The selected link's identity. Matched by id, not value, so a refreshed
+    /// copy of the link (new visit count) stays highlighted.
+    private var selectedLinkID: String? { linkID(selection) }
+
+    /// A click on a row selects it and gives the list keyboard focus.
+    private func select(_ item: ShortURL) {
+        selection = .shortURLDetail(item)
+        isListFocused = true
+    }
+
+    /// ↑/↓: moves the selection to the neighbouring row (or the first / last
+    /// row when nothing is selected) and scrolls just enough to show it.
+    private func moveSelection(by offset: Int, proxy: ScrollViewProxy) -> KeyPress.Result {
+        let items = store.items
+        guard !items.isEmpty else { return .ignored }
+        let current = items.firstIndex { $0.id == selectedLinkID }
+        let target = current.map { $0 + offset } ?? (offset > 0 ? 0 : items.count - 1)
+        guard items.indices.contains(target) else { return .handled }
+        selection = .shortURLDetail(items[target])
+        withAnimation(.easeInOut(duration: 0.15)) {
+            proxy.scrollTo(items[target].id)
+        }
+        return .handled
+    }
+    #endif
 
     // MARK: - Loading skeleton
 
     private var loadingView: some View {
-        List(0..<8, id: \.self) { _ in
-            SkeletonRow()
+        Group {
+            #if os(macOS)
+            ScrollView {
+                VStack(spacing: 0) {
+                    ForEach(0..<8, id: \.self) { _ in
+                        SkeletonRow()
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                    }
+                }
+                .padding(.vertical, 6)
+            }
+            #else
+            List(0..<8, id: \.self) { _ in
+                SkeletonRow()
+                    .listRowBackground(Palette.surface)
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            #endif
         }
-        .listStyle(.plain)
         .redacted(reason: .placeholder)
         .allowsHitTesting(false)
         .accessibilityLabel("Loading links")
@@ -643,7 +722,7 @@ struct ShortURLListScreen: View {
                 } label: {
                     Label("Create First Link", systemImage: "plus")
                 }
-                .buttonStyle(.borderedProminent)
+                .stateButtonStyle(prominent: true)
             }
         }
     }
@@ -661,7 +740,7 @@ struct ShortURLListScreen: View {
             } label: {
                 Label("Try Again", systemImage: "arrow.clockwise")
             }
-            .buttonStyle(.borderedProminent)
+            .stateButtonStyle(prominent: true)
         }
     }
 
@@ -906,44 +985,68 @@ private struct RowTags: View {
     private var overflow: Int { max(0, tags.count - maxVisible) }
 }
 
-// MARK: - Hover-reveal row actions (macOS)
+// MARK: - Mac list row
 
 #if os(macOS)
-/// A macOS list row whose trailing accessory swaps on hover. At rest it shows
-/// the visit count; when the cursor is over the row the count fades out and
-/// **Edit**/**Delete** buttons fade in *in the same place* — so the buttons
-/// replace the count rather than overlapping it. Unlike a swipe (undiscoverable,
-/// non-native on the Mac), the buttons advertise themselves on hover. Delete
-/// routes through the same central confirmation alert as the context menu — it
-/// never deletes silently. Row selection (a plain tap) and the context menu are
-/// unaffected: the buttons capture their own clicks, and while hidden they ignore
-/// hit-testing so a click in that area still selects the row.
-private struct HoverableLinkRow: View {
+/// A row of the Mac link list. Draws its own selection — the soft lavender
+/// ``SelectionPill`` (40% while hovered) with the title in
+/// ``Palette/accentText`` — instead of the system highlight, and a
+/// ``Palette/hairline`` separator inset to the text.
+///
+/// Its trailing accessory swaps on hover: at rest it shows the visit count;
+/// with the cursor over the row the count fades out and matte Copy / Share /
+/// Edit / Delete buttons fade in *in the same place*. Delete routes through the
+/// same central confirmation as the context menu — it never deletes silently.
+/// The buttons capture their own clicks, and while hidden they ignore
+/// hit-testing so a click there still selects the row.
+private struct MacLinkRow: View {
     let shortURL: ShortURL
+    let isSelected: Bool
+    let showsSeparator: Bool
+    let onSelect: () -> Void
     let onCopy: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
     let onSelectTag: (String) -> Void
     @State private var isHovering = false
 
+    /// The text inset: the pill's 8 pt from the column edge plus 12 inside it.
+    private static let textInset: CGFloat = 20
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .firstTextBaseline, spacing: 12) {
-                ShortURLRowPrimary(shortURL: shortURL)
+            HStack(alignment: .center, spacing: 12) {
+                ShortURLRowPrimary(shortURL: shortURL, isSelected: isSelected)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+                    .accessibilityAction { onSelect() }
                 Spacer(minLength: 8)
                 trailingAccessory
             }
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
 
             if !shortURL.tags.isEmpty {
                 RowTags(tags: shortURL.tags, onSelectTag: onSelectTag)
             }
         }
-        .onHover { hovering in
-            isHovering = hovering
+        .padding(.horizontal, Self.textInset)
+        .padding(.vertical, 10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background { SelectionPill(isSelected: isSelected, isHovering: isHovering) }
+        .overlay(alignment: .bottom) {
+            if showsSeparator {
+                Rectangle()
+                    .fill(Palette.hairline)
+                    .frame(height: 0.5)
+                    .padding(.leading, Self.textInset)
+                    .padding(.trailing, 8)
+                    .accessibilityHidden(true)
+            }
         }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: onSelect)
+        .onHover { isHovering = $0 }
         .animation(.easeInOut(duration: 0.12), value: isHovering)
+        .accessibilityElement(children: .contain)
     }
 
     /// The visit count and the action buttons stacked in one place, cross-fading
@@ -957,38 +1060,47 @@ private struct HoverableLinkRow: View {
             hoverActions
                 .opacity(isHovering ? 1 : 0)
                 .allowsHitTesting(isHovering)
+                .accessibilityHidden(!isHovering)
         }
     }
 
     private var hoverActions: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 4) {
             Button(action: onCopy) {
-                Image(systemName: "doc.on.doc")
-                    .frame(width: 20, height: 20)
+                actionIcon("doc.on.doc")
             }
             .help("Copy short URL")
+            .accessibilityLabel("Copy short URL")
 
             if let url = URL(string: shortURL.shortUrl) {
                 ShareLink(item: url) {
-                    Image(systemName: "square.and.arrow.up")
-                        .frame(width: 20, height: 20)
+                    actionIcon("square.and.arrow.up")
                 }
                 .help("Share")
+                .accessibilityLabel("Share")
             }
 
             Button(action: onEdit) {
-                Image(systemName: "pencil")
-                    .frame(width: 20, height: 20)
+                actionIcon("pencil")
             }
             .help("Edit")
+            .accessibilityLabel("Edit")
 
             Button(role: .destructive, action: onDelete) {
                 Image(systemName: "trash")
-                    .frame(width: 20, height: 20)
+                    .font(.footnote)
+                    .foregroundStyle(.red)
             }
             .help("Delete")
+            .accessibilityLabel("Delete")
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.matteIcon(side: 26))
+    }
+
+    private func actionIcon(_ systemImage: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.footnote)
+            .foregroundStyle(Palette.accent)
     }
 }
 #endif
@@ -1018,8 +1130,8 @@ private struct FilterPill: View {
             }
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
-            .background(Color.accentColor.opacity(0.15), in: Capsule())
-            .foregroundStyle(Color.accentColor)
+            .background(Palette.accentSoft, in: Capsule())
+            .foregroundStyle(Palette.accentText)
 
             Spacer(minLength: 0)
         }
@@ -1034,15 +1146,93 @@ private struct SkeletonRow: View {
         HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 3) {
                 Text("Placeholder short URL title")
-                    .font(.body.weight(.semibold))
+                    .font(.body.weight(.medium))
                 Text("abc123 · 2 days ago")
-                    .font(.caption)
+                    .font(.footnote)
             }
             Spacer(minLength: 8)
-            Label("00", systemImage: "eye")
-                .font(.caption)
-                .labelStyle(.titleAndIcon)
+            Text("00")
+                .font(.footnote.weight(.medium))
+                .monospacedDigit()
         }
         .padding(.vertical, 4)
     }
 }
+
+// MARK: - Preview
+
+#if DEBUG
+extension ShortURLListScreen {
+    /// Skips the initial load, so a preview's seeded store stays as seeded.
+    fileprivate func skippingInitialLoad() -> ShortURLListScreen {
+        var copy = self
+        copy.loadsOnAppear = false
+        return copy
+    }
+}
+
+/// A seeded list for the canvas: titled and untitled links, with and without
+/// tags. On the Mac the second row is selected, so the selection pill shows.
+private struct ShortURLListScreenPreview: View {
+    private static let items: [ShortURL] = {
+        let now = Date()
+        func link(_ code: String, _ title: String?, days: Double, visits: Int, tags: [String] = []) -> ShortURL {
+            ShortURL(shortCode: code,
+                     shortUrl: "https://s.example/\(code)",
+                     longUrl: "https://example.com/articles/\(code)/a-fairly-long-destination-path",
+                     dateCreated: now.addingTimeInterval(-days * 86_400),
+                     visitsSummary: VisitsSummary(total: visits, nonBots: visits * 3 / 4, bots: visits / 4),
+                     title: title,
+                     tags: tags)
+        }
+        return [
+            link("launch", "Introducing the new Shlinkly", days: 1, visits: 1_284, tags: ["launch", "blog"]),
+            link("abs", "Audiobookshelf — self-hosted audiobooks and podcasts", days: 3, visits: 312,
+                 tags: ["selfhosted", "media", "audio", "reading"]),
+            link("q3", nil, days: 9, visits: 21),
+            link("talk", "Slides: Swift Charts without the band scale", days: 40, visits: 87, tags: ["talks"]),
+            link("cv", "Résumé", days: 200, visits: 5),
+        ]
+    }()
+
+    @State private var store = ShortURLListStore.preview(items: Self.items)
+    @State private var tagsStore = TagsStore(client: ShlinkClient(
+        baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview"))
+    @State private var appModel = AppModel(spotlight: nil)
+    #if os(macOS)
+    @State private var selection: Route? = .shortURLDetail(Self.items[1])
+    #endif
+
+    var body: some View {
+        let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
+        #if os(macOS)
+        NavigationStack {
+            ShortURLListScreen(store: store, tagsStore: tagsStore, client: client, selection: $selection,
+                               detailDismissCount: 0, showSettings: .constant(false))
+                .skippingInitialLoad()
+        }
+        .frame(width: 380, height: 520)
+        .background { WindowBackdrop() }
+        .environment(appModel)
+        .brandTint()
+        #else
+        NavigationStack {
+            ShortURLListScreen(store: store, tagsStore: tagsStore, client: client, showSettings: .constant(false))
+                .skippingInitialLoad()
+        }
+        .environment(appModel)
+        .brandTint()
+        #endif
+    }
+}
+
+#Preview("List, light") {
+    ShortURLListScreenPreview()
+        .preferredColorScheme(.light)
+}
+
+#Preview("List, dark") {
+    ShortURLListScreenPreview()
+        .preferredColorScheme(.dark)
+}
+#endif

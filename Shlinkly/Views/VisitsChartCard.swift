@@ -6,10 +6,10 @@
 import SwiftUI
 import ShlinklyCore
 
-/// The detail screen's chart card: the "Over time · <step>" label band with the
-/// series legend, a controls row (the date span, with the paging arrows when
-/// the month chart is paged, and the step picker), and below them the chart
-/// itself — or its loading / empty / error stand-in.
+/// The detail screen's chart card: one label band — "Over time", with the step
+/// picker and the paging arrows on the trailing side — then the chart, then a
+/// footnote row with the date span and the series legend. While loading, empty
+/// or failed, the chart's stand-in takes the plot's place.
 ///
 /// Everything it shows comes from the ``ShortURLDetailStore``; it holds no state
 /// of its own. Kept apart from ``DetailScreen`` so it can be previewed with a
@@ -18,24 +18,72 @@ struct VisitsChartCard: View {
     let store: ShortURLDetailStore
 
     var body: some View {
-        Card("Over time · \(store.chartGrouping.label)") {
-            VStack(alignment: .leading, spacing: Space.tight) {
-                controlsRow
-                    .padding(.horizontal, Space.cardInset)
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                labelBand
                 chartContent
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal, Space.cardInset)
-                    .padding(.top, Space.hairline)
-                    .padding(.bottom, Space.cardInset)
-            }
-        } accessory: {
-            if store.state == .loaded {
-                legend
+                if store.state == .loaded {
+                    footnoteRow
+                        .padding(.horizontal, Space.cardInset)
+                        .padding(.top, Space.tight)
+                        .padding(.bottom, Space.footBand)
+                } else {
+                    Color.clear.frame(height: Space.cardInset)
+                }
             }
         }
     }
 
-    // MARK: - Legend
+    // MARK: - Label band
+
+    /// "Over time" with the controls trailing. When the controls don't fit
+    /// beside the label (an iPhone with four steps *and* paging), they drop to
+    /// a row of their own under it.
+    private var labelBand: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: Space.tight) {
+                CardLabel("Over time")
+                Spacer(minLength: Space.tight)
+                controls
+            }
+            VStack(alignment: .leading, spacing: Space.tight) {
+                CardLabel("Over time")
+                HStack(spacing: Space.tight) {
+                    Spacer(minLength: 0)
+                    controls
+                }
+            }
+        }
+        .padding(.horizontal, Space.cardInset)
+        .padding(.vertical, Space.labelBand)
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        if store.state == .loaded {
+            HStack(spacing: Space.tight) {
+                groupingPicker
+                pagingButtons
+            }
+        }
+    }
+
+    // MARK: - Footnote row
+
+    /// The date span on the leading side, the legend on the trailing side.
+    private var footnoteRow: some View {
+        HStack(alignment: .center, spacing: Space.tight) {
+            Text(store.chartDateRange)
+                .font(.footnote)
+                .foregroundStyle(Palette.textSecondary)
+                .monospacedDigit()
+                .lineLimit(1)
+            Spacer(minLength: Space.tight)
+            legend
+        }
+    }
 
     /// People always; Bots only while they are drawn (exclude bots off).
     private var legend: some View {
@@ -54,86 +102,56 @@ struct VisitsChartCard: View {
                 .fill(color)
                 .frame(width: 8, height: 8)
             Text(title)
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(Palette.textSecondary)
                 .lineLimit(1)
         }
     }
 
-    // MARK: - Controls row
+    // MARK: - Paging
 
-    /// The date span on the leading side, the step picker (when there is a
-    /// choice) on the trailing side.
-    private var controlsRow: some View {
-        HStack(alignment: .center, spacing: Space.tight) {
-            dateRange
-            Spacer(minLength: 0)
-            groupingPicker
-        }
-    }
-
-    // MARK: - Date span & paging
-
-    /// The chart's date span. When the month chart is paged it is flanked by
-    /// the "‹" / "›" arrows that turn the page a year at a time.
+    /// The "‹" / "›" arrows that turn a paged month chart a year at a time.
     @ViewBuilder
-    private var dateRange: some View {
-        let label = Text(store.chartDateRange)
-            .font(.footnote)
-            .foregroundStyle(Palette.textSecondary)
-            .monospacedDigit()
-            .lineLimit(1)
-        if store.state == .loaded, store.isChartPaged {
-            HStack(spacing: 0) {
+    private var pagingButtons: some View {
+        if store.isChartPaged {
+            HStack(spacing: 4) {
                 pageButton(systemImage: "chevron.left",
                            label: "Previous 12 months",
                            isEnabled: store.canShowPreviousChartPage) {
                     store.showPreviousChartPage()
                 }
-                label
                 pageButton(systemImage: "chevron.right",
                            label: "Next 12 months",
                            isEnabled: store.canShowNextChartPage) {
                     store.showNextChartPage()
                 }
             }
-            // Pull the row left so the chevron's glyph, not its roomy tap
-            // target, lines up with the card's text edge.
-            .padding(.leading, -Self.pageButtonInset)
-        } else {
-            label
         }
     }
 
-    /// The side of a paging arrow's tap target: the 44pt touch minimum on iOS,
-    /// a compact pointer target on the Mac.
-    private static var pageButtonSide: CGFloat {
-        #if os(iOS)
-        44
-        #else
-        22
-        #endif
-    }
-
-    /// How far the chevron glyph sits inside its tap target.
-    private static var pageButtonInset: CGFloat { (pageButtonSide - 8) / 2 }
-
+    @ViewBuilder
     private func pageButton(
         systemImage: String,
         label: String,
         isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let button = Button(action: action) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(isEnabled ? Palette.accent : Palette.textSecondary.opacity(0.5))
-                .frame(width: Self.pageButtonSide, height: Self.pageButtonSide)
-                .contentShape(Rectangle())
+                .foregroundStyle(isEnabled ? Palette.accent : Palette.textSecondary)
         }
-        .buttonStyle(.borderless)
         .disabled(!isEnabled)
         .accessibilityLabel(label)
+        #if os(macOS)
+        button.buttonStyle(.matteIcon(side: 26))
+        #else
+        // The 44 pt touch minimum, borderless like the rest of the iPhone card.
+        button
+            .frame(width: 36, height: 44)
+            .contentShape(Rectangle())
+            .buttonStyle(.borderless)
+        #endif
     }
 
     // MARK: - Step picker
@@ -141,19 +159,16 @@ struct VisitsChartCard: View {
     /// The chart's step control (Day / Week / Month / Year). Only "All time"
     /// offers a choice, and only when the window is long enough for a coarser
     /// step to be worth drawing; otherwise there is nothing to pick and it stays
-    /// out of the card.
+    /// out of the band.
     @ViewBuilder
     private var groupingPicker: some View {
         let groupings = store.availableGroupings
         if store.state == .loaded, groupings.count > 1 {
-            Picker("Group by", selection: groupingBinding) {
-                ForEach(groupings, id: \.self) { grouping in
-                    Text(grouping.label).tag(grouping)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .fixedSize()
+            SegmentedPicker("Group by",
+                            selection: groupingBinding,
+                            options: groupings.map { .init(value: $0, label: $0.label) },
+                            fillsWidth: false)
+                .fixedSize()
         }
     }
 
@@ -176,7 +191,7 @@ struct VisitsChartCard: View {
                 detail: message
             ) {
                 Button("Try Again") { store.load() }
-                    .buttonStyle(.bordered)
+                    .stateButtonStyle()
             }
         case .empty:
             chartMessage(
@@ -186,7 +201,7 @@ struct VisitsChartCard: View {
             ) {
                 if store.canSuggestAllTime {
                     Button("See all time") { store.showAllTime() }
-                        .buttonStyle(.bordered)
+                        .stateButtonStyle()
                 }
             }
         case .loaded:
@@ -235,6 +250,26 @@ struct VisitsChartCard: View {
         case .last30Days: return "No visits in the last 30 days"
         case .allTime: return "No visits yet"
         }
+    }
+}
+
+extension View {
+    /// The empty- and error-state buttons: matte on macOS, bordered on iOS.
+    @ViewBuilder
+    func stateButtonStyle(prominent: Bool = false) -> some View {
+        #if os(macOS)
+        if prominent {
+            buttonStyle(.matteProminent)
+        } else {
+            buttonStyle(.matte)
+        }
+        #else
+        if prominent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
+        }
+        #endif
     }
 }
 

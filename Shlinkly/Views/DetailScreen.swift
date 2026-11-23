@@ -107,6 +107,7 @@ struct DetailScreen: View {
                 store.apply(updated)
                 listStore.applyUpdated(updated)
             }
+            .brandTint()
         }
         .shortURLDeleteConfirmation(item: $pendingDelete) { url in
             Task { await runDelete(url) }
@@ -304,11 +305,11 @@ struct DetailScreen: View {
 
     // MARK: - Link preview
 
-    /// The native preview fills its own card, clipped to the card's corners.
+    /// The matte link preview: site icon, page title and host. Tapping it
+    /// opens the destination.
     private func linkPreviewCard(_ url: URL) -> some View {
         Card {
             LinkPreviewView(url: url)
-                .clipShape(RoundedRectangle(cornerRadius: Radius.card, style: .continuous))
         }
     }
 
@@ -327,6 +328,7 @@ struct DetailScreen: View {
                     .padding(.bottom, Space.cardInset)
                 CardHairline()
                 Toggle("Exclude bots", isOn: excludeBotsBinding)
+                    .toggleStyle(.switch)
                     .font(.body)
                     .foregroundStyle(Palette.textPrimary)
                     .tint(Palette.accent)
@@ -337,13 +339,11 @@ struct DetailScreen: View {
     }
 
     private var periodPicker: some View {
-        Picker("Period", selection: periodBinding) {
-            Text("7 days").tag(ShortURLDetailStore.Period.last7Days)
-            Text("30 days").tag(ShortURLDetailStore.Period.last30Days)
-            Text("All").tag(ShortURLDetailStore.Period.allTime)
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
+        SegmentedPicker("Period", selection: periodBinding, options: [
+            .init(value: .last7Days, label: "7 days"),
+            .init(value: .last30Days, label: "30 days"),
+            .init(value: .allTime, label: "All"),
+        ])
     }
 
     /// Lifetime figures from the link's summary over the selected period's.
@@ -365,11 +365,12 @@ struct DetailScreen: View {
     }
 
     /// What follows the period figure on a metric tile: "449 in 30 days".
-    private var periodSuffix: String {
+    /// `nil` for "All", where the line would only repeat the all-time figure.
+    private var periodSuffix: String? {
         switch store.period {
         case .last7Days: return "in 7 days"
         case .last30Days: return "in 30 days"
-        case .allTime: return "all time"
+        case .allTime: return nil
         }
     }
 
@@ -486,7 +487,7 @@ private struct TagChipsView: View {
 /// seeded, so the screen never talks to a server.
 private enum DetailScreenPreviewData {
     @MainActor
-    static func screen() -> DetailScreen {
+    static func screen(period: ShortURLDetailStore.Period = .last30Days) -> DetailScreen {
         let calendar = Calendar.current
         let today = calendar.startOfDay(for: Date())
         let created = calendar.date(byAdding: .day, value: -150, to: today) ?? today
@@ -524,7 +525,7 @@ private enum DetailScreenPreviewData {
         )
         let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
         return DetailScreen(
-            store: .preview(shortURL: shortURL, visits: visits, period: .last30Days, calendar: calendar),
+            store: .preview(shortURL: shortURL, visits: visits, period: period, calendar: calendar),
             client: client,
             listStore: ShortURLListStore(client: client),
             tagsStore: TagsStore(client: client),
@@ -535,17 +536,33 @@ private enum DetailScreenPreviewData {
     }
 }
 
-#Preview("Detail, light") {
+#Preview("Detail, 30 days, light") {
     NavigationStack {
         DetailScreenPreviewData.screen()
     }
+    .brandTint()
     .preferredColorScheme(.light)
 }
 
-#Preview("Detail, dark") {
+#Preview("Detail, 30 days, dark") {
     NavigationStack {
         DetailScreenPreviewData.screen()
     }
+    .brandTint()
     .preferredColorScheme(.dark)
+}
+
+#Preview("Detail, All") {
+    NavigationStack {
+        DetailScreenPreviewData.screen(period: .allTime)
+    }
+    .brandTint()
+}
+
+#Preview("Detail, 7 days") {
+    NavigationStack {
+        DetailScreenPreviewData.screen(period: .last7Days)
+    }
+    .brandTint()
 }
 #endif

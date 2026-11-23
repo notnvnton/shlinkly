@@ -48,6 +48,7 @@ struct InfoPopoverButton: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding()
+            .brandTint()
             .frame(width: 300, alignment: .leading)
             // Keep it a popover on iPhone rather than auto-adapting to a sheet.
             .presentationCompactAdaptation(.popover)

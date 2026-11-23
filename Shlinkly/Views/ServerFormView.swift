@@ -102,12 +102,10 @@ struct ServerFormView: View {
             }
 
             Section {
-                Picker("Key storage", selection: $model.keyStorage) {
-                    Text("On this device").tag(KeyStorage.local)
-                    Text("iCloud sync").tag(KeyStorage.iCloud)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                SegmentedPicker("Key storage", selection: $model.keyStorage, options: [
+                    .init(value: .local, label: "On this device"),
+                    .init(value: .iCloud, label: "iCloud sync"),
+                ])
             } header: {
                 Text("Key storage")
             } footer: {

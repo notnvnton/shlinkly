@@ -4,10 +4,22 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 // The "Lavender & Matte" design tokens: spacing, corner radii and colors, in
 // one place. Colors come from the asset catalog (each with a dark appearance);
-// the few values the catalog can't hold (the dark gradients) live here.
+// the values the catalog can't hold (gradients, and the macOS translucent
+// surfaces, which differ from iOS) live here.
+//
+// The brand color is ``Palette/accent``, read from the `Brand` colorset. It is
+// never `Color.accentColor`: on macOS SwiftUI honours the `AccentColor` asset
+// only when the user picks "Multicolor" as the system accent, so anything that
+// reads it turns system blue on most Macs. Scene and sheet roots apply it as
+// the tint with ``SwiftUICore/View/brandTint()``.
 //
 // Typography uses semantic text styles only, so Dynamic Type keeps working:
 // headings `.semibold`, everything else `.regular` or `.medium`, numbers
@@ -74,14 +86,26 @@ enum Radius {
 
 /// Named colors from the asset catalog. Every one adapts to light and dark.
 enum Palette {
-    /// Icons, links, system tint. The app's global accent (`AccentColor`).
-    static let accent = Color.accentColor
+    /// Icons, links, the tint. The `Brand` colorset (same values as
+    /// `AccentColor`, which only iOS system controls still read).
+    static let accent = Color("Brand")
     /// Screen background (the flat fallback; see ``ThemedCanvas``).
     static let canvas = Color("Canvas")
     /// Cards, the chart callout.
     static let surface = Color("Surface")
-    /// Tiles inside cards, bar tracks.
+    /// Tiles inside cards, bar tracks. Translucent on macOS, so the window's
+    /// wash shows through.
+    #if os(macOS)
+    static let sunken = Color(light: rgba(241, 239, 248, 0.9), dark: rgba(255, 255, 255, 0.05))
+    #else
     static let sunken = Color("Sunken")
+    #endif
+    /// The segmented control's track. Translucent on macOS.
+    #if os(macOS)
+    static let track = Color(light: rgba(0, 0, 0, 0.07), dark: rgba(255, 255, 255, 0.08))
+    #else
+    static let track = Color("Track")
+    #endif
     /// The 1 pt card outline.
     static let cardBorder = Color("CardBorder")
     /// Separators inside cards, chart grid lines.
@@ -147,7 +171,119 @@ struct ThemedCanvas: View {
 
 extension View {
     /// Puts the themed screen background (``ThemedCanvas``) behind the view.
+    /// On macOS it adds nothing: the window's translucent backdrop
+    /// (``WindowBackdrop``) is the screen background there.
+    @ViewBuilder
     func canvasBackground() -> some View {
+        #if os(macOS)
+        self
+        #else
         background { ThemedCanvas() }
+        #endif
+    }
+
+    /// Tints the view's controls with the brand color. Applied at the root of
+    /// every scene and of every sheet and popover (a sheet doesn't always
+    /// inherit the tint on macOS).
+    func brandTint() -> some View {
+        tint(Palette.accent)
+    }
+}
+
+// MARK: - macOS surfaces
+
+#if os(macOS)
+extension Palette {
+    /// The translucent matte window (approved mockup values).
+    enum Mac {
+        /// The wash over the window's behind-window blur, top-left to
+        /// bottom-right.
+        static let windowWash = LinearGradient(
+            colors: [
+                Color(light: rgba(247, 245, 251, 0.84), dark: rgba(40, 38, 52, 0.80)),
+                Color(light: rgba(245, 241, 246, 0.78), dark: rgba(29, 27, 37, 0.84)),
+            ],
+            startPoint: .topLeading,
+            endPoint: .bottomTrailing
+        )
+
+        /// The lavender wash over the sidebar material, top to bottom.
+        static let sidebarWash = LinearGradient(
+            colors: [
+                Color(light: rgba(232, 229, 243, 0.62), dark: rgba(50, 47, 66, 0.55)),
+                Color(light: rgba(237, 232, 241, 0.48), dark: rgba(40, 37, 52, 0.45)),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+
+        /// A card's soft vertical gradient (instead of flat white).
+        static let cardFill = LinearGradient(
+            colors: [
+                Color(light: rgba(255, 255, 255, 0.90), dark: rgba(50, 48, 62, 0.82)),
+                Color(light: rgba(252, 251, 254, 0.82), dark: rgba(42, 40, 52, 0.80)),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        /// A card's 0.5 pt edge.
+        static let cardBorder = Color(light: rgba(0, 0, 0, 0.08), dark: rgba(255, 255, 255, 0.08))
+        /// A card's shadow: light mode only.
+        static let cardShadow = Color(light: rgba(0, 0, 0, 0.05), dark: rgba(0, 0, 0, 0))
+
+        /// The soft lavender selection pill (list rows, sidebar), top to bottom.
+        static let selectionFill = LinearGradient(
+            colors: [
+                Color(light: rgba(234, 231, 248, 0.98), dark: rgba(179, 172, 230, 0.20)),
+                Color(light: rgba(226, 222, 244, 0.98), dark: rgba(179, 172, 230, 0.14)),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        /// The selection pill's 0.5 pt edge: the brand color at 18%.
+        static let selectionEdge = Palette.accent.opacity(0.18)
+    }
+}
+#endif
+
+// MARK: - Color helpers
+
+/// An sRGB color as 0–255 channels and a 0–1 alpha, the way the mockup
+/// specifies them (`rgba(247,245,251,0.84)`).
+typealias RGBA = (red: Double, green: Double, blue: Double, alpha: Double)
+
+nonisolated func rgba(_ red: Double, _ green: Double, _ blue: Double, _ alpha: Double = 1) -> RGBA {
+    (red, green, blue, alpha)
+}
+
+/// `#RRGGBB` as ``RGBA``.
+nonisolated func hex(_ value: UInt32, alpha: Double = 1) -> RGBA {
+    (Double((value >> 16) & 0xFF), Double((value >> 8) & 0xFF), Double(value & 0xFF), alpha)
+}
+
+extension Color {
+    /// A fixed sRGB color.
+    nonisolated init(_ color: RGBA) {
+        self.init(.sRGB, red: color.red / 255, green: color.green / 255, blue: color.blue / 255,
+                  opacity: color.alpha)
+    }
+
+    /// A color that follows the appearance: `light` in light mode, `dark` in
+    /// dark mode. Resolved by AppKit / UIKit, so it also adapts inside
+    /// gradients and shadows.
+    nonisolated init(light: RGBA, dark: RGBA) {
+        #if os(macOS)
+        self.init(nsColor: NSColor(name: nil) { @Sendable appearance in
+            let color = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            return NSColor(srgbRed: color.red / 255, green: color.green / 255, blue: color.blue / 255,
+                           alpha: color.alpha)
+        })
+        #else
+        self.init(uiColor: UIColor { @Sendable traits in
+            let color = traits.userInterfaceStyle == .dark ? dark : light
+            return UIColor(red: color.red / 255, green: color.green / 255, blue: color.blue / 255,
+                           alpha: color.alpha)
+        })
+        #endif
     }
 }

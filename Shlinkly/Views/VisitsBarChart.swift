@@ -117,25 +117,24 @@ struct VisitsBarChart: View {
             }
         }
         .chartXAxis {
-            // Explicit, thinned column ticks (≈4 for a week, ≈5 beyond) so Swift
-            // Charts can't fall back to an hour axis. These are tick values on the
-            // continuous scale, not a scale domain, so they don't create a band scale.
+            // Labels only: no vertical grid lines, no ticks (the Y axis keeps the
+            // horizontal guides). Explicit, thinned column values (at most 5) so
+            // Swift Charts can't fall back to an hour axis. These are tick values
+            // on the continuous scale, not a scale domain, so they don't create a
+            // band scale.
             //
             // The label MUST use the closure form + `.fixedSize()`: with unit-binned
             // bars, Charts otherwise clamps each label to one cell's width
             // (~11pt on a 30-day domain) and truncates "Jun 15" to "Ju…". `.fixedSize()`
             // lets the text keep its natural width. Do not revert to `AxisValueLabel(format:)`.
             AxisMarks(values: labelDates) { value in
-                AxisGridLine(stroke: StrokeStyle(lineWidth: 0.5))
-                    .foregroundStyle(Palette.hairline)
-                AxisTick()
-                    .foregroundStyle(Palette.hairline)
-                // An explicit, standard anchor: the label hangs below its tick and
-                // starts at it — where Charts puts it by default — without leaving
-                // Charts to derive a custom `UnitPoint` (which it warns about).
-                AxisValueLabel(anchor: .topLeading) {
+                // Explicit, standard anchors — never a custom `UnitPoint` (Charts
+                // warns about deriving one): the first label starts at the plot's
+                // leading edge, the last one ends at its trailing edge, the rest
+                // centre under their column's start. None can poke out of the plot.
+                AxisValueLabel(anchor: labelAnchor(index: value.index, count: value.count)) {
                     if let date = value.as(Date.self) {
-                        Text(date, format: axisLabelFormat)
+                        Text(labelDate(for: date), format: axisLabelFormat)
                             .foregroundStyle(Palette.textSecondary)
                             .fixedSize()
                     }
@@ -361,22 +360,44 @@ struct VisitsBarChart: View {
     }
 
     /// The thinned set of columns to label: ~4 across up to 10 columns, ~5 beyond,
-    /// always anchored to include the last column (today's) so the right-most
-    /// label is present and whole. Striding back from it keeps the spacing even;
-    /// every value is an existing column start, matching the bar positions.
+    /// always anchored to include the last column (today's). Striding back from
+    /// it keeps the spacing even. Every value is an existing column start,
+    /// except the last: it is moved to the domain's end (the plot's trailing
+    /// edge) so its label can end there, and ``labelDate(for:)`` maps it back to
+    /// the last column's date.
     private var labelDates: [Date] {
         let starts = data.map(\.start)
         guard starts.count > 1 else { return starts }
         let target = starts.count <= 10 ? 4 : 5
-        guard starts.count > target else { return starts }
-        let step = max(1, Int((Double(starts.count - 1) / Double(target - 1)).rounded()))
-        var picked: [Date] = []
-        var index = starts.count - 1
-        while index >= 0 {
-            picked.append(starts[index])
-            index -= step
+        var picked: [Date]
+        if starts.count <= target {
+            picked = starts
+        } else {
+            let step = max(1, Int((Double(starts.count - 1) / Double(target - 1)).rounded()))
+            picked = []
+            var index = starts.count - 1
+            while index >= 0 {
+                picked.append(starts[index])
+                index -= step
+            }
+            picked.reverse()
         }
-        return picked.reversed()
+        picked[picked.count - 1] = xDomain.upperBound
+        return picked
+    }
+
+    /// The date a label names: the domain's end stands for the last column.
+    private func labelDate(for value: Date) -> Date {
+        guard value == xDomain.upperBound, let last = data.last else { return value }
+        return last.start
+    }
+
+    /// First label hangs from the plot's leading edge, the last from its
+    /// trailing edge, the others are centred under their tick.
+    private func labelAnchor(index: Int, count: Int) -> UnitPoint {
+        if index == 0 { return .topLeading }
+        if index == count - 1, count > 1 { return .topTrailing }
+        return .top
     }
 }
 

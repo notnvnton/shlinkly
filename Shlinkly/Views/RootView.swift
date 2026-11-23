@@ -37,7 +37,14 @@ struct RootView: View {
         }
         .sheet(isPresented: $showSettings) {
             SettingsView()
+                .brandTint()
         }
+        #if os(macOS)
+        // The translucent matte window: the desktop blurred behind it, under a
+        // soft lavender wash. Every column sits on it; nothing on the Mac paints
+        // an opaque canvas.
+        .background { WindowBackdrop() }
+        #endif
         // Hosted here, above the per-client ``ConfiguredRoot``, so the pill
         // survives the subtree rebuild a server switch causes.
         .spotlightNoticeToast()
@@ -235,54 +242,118 @@ private struct ConfiguredRoot: View {
 /// Selecting a row drives the *same* ``ShortURLListStore/activeTag`` the middle
 /// list and the detail chips use, so the whole window stays in sync — selecting
 /// a tag here filters the content column, and "All Links" resets it. The
-/// selection is bound straight to `activeTag` so a filter set elsewhere (a row
-/// chip, a detail tap) reflects back as the highlighted sidebar row.
+/// highlight is read straight from `activeTag`, so a filter set elsewhere (a
+/// row chip, a detail tap) reflects back as the selected sidebar row.
+///
+/// Not a `List`, for the same reason as the link list: the system highlight is
+/// gray or the system accent. Rows draw the soft lavender ``SelectionPill``;
+/// ↑/↓ move the selection while the sidebar has focus.
 private struct TagSidebar: View {
     let listStore: ShortURLListStore
     let tagsStore: TagsStore
     @Environment(AppModel.self) private var appModel
+    @FocusState private var isFocused: Bool
 
-    /// A concrete selection value per row. "All Links" gets its own case rather
-    /// than a `nil` tag — `List` treats a `nil` selection as "nothing selected",
-    /// so a `nil`-tagged row never fires the binding and can't be picked. The
-    /// enum sidesteps that: every row, including All Links, has a non-nil tag.
+    /// A concrete value per row: "All Links" has its own case rather than a
+    /// `nil` tag, so every row compares the same way.
     private enum Item: Hashable {
         case allLinks
         case tag(String)
     }
 
     var body: some View {
-        List(selection: selectionBinding) {
-            Label("All Links", systemImage: "link")
-                .tag(Item.allLinks)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 2) {
+                SidebarRow(title: "All Links", systemImage: "link", isSelected: current == .allLinks) {
+                    select(.allLinks)
+                }
 
-            if !tagsStore.tags.isEmpty {
-                Section("Tags") {
+                if !tagsStore.tags.isEmpty {
+                    Text("Tags")
+                        .font(.footnote.weight(.medium))
+                        .foregroundStyle(Palette.textSecondary)
+                        .padding(.horizontal, 20)
+                        .padding(.top, Space.footBand)
+                        .padding(.bottom, Space.hairline)
+                        .accessibilityAddTraits(.isHeader)
                     ForEach(tagsStore.tags, id: \.self) { tag in
-                        Label(tag, systemImage: "tag")
-                            .tag(Item.tag(tag))
+                        SidebarRow(title: tag, systemImage: "tag", isSelected: current == .tag(tag)) {
+                            select(.tag(tag))
+                        }
                     }
                 }
             }
+            .padding(.vertical, Space.tight)
         }
+        .focusable()
+        .focused($isFocused)
+        .focusEffectDisabled()
+        .onKeyPress(.upArrow) { move(by: -1) }
+        .onKeyPress(.downArrow) { move(by: 1) }
+        .background { SidebarBackdrop() }
         .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
         .task { tagsStore.loadIfNeeded() }
     }
 
-    /// Bridges the single-selection binding and ``ShortURLListStore/activeTag``:
-    /// a `nil` filter shows "All Links" selected, picking a tag applies it, and
-    /// picking "All Links" clears it. Reading from `activeTag` means a filter set
-    /// elsewhere (a row chip, a detail tap) reflects back here as the highlight.
-    private var selectionBinding: Binding<Item?> {
-        Binding(
-            get: { listStore.activeTag.map(Item.tag) ?? .allLinks },
-            set: { item in
-                switch item {
-                case .tag(let tag): listStore.setActiveTag(tag)
-                case .allLinks, .none: listStore.setActiveTag(nil)
-                }
-            }
-        )
+    /// Every row in order, for keyboard movement.
+    private var items: [Item] {
+        [.allLinks] + tagsStore.tags.map(Item.tag)
+    }
+
+    /// A `nil` filter shows "All Links" selected.
+    private var current: Item {
+        listStore.activeTag.map(Item.tag) ?? .allLinks
+    }
+
+    /// Picking a tag applies it, picking "All Links" clears it.
+    private func select(_ item: Item) {
+        switch item {
+        case .tag(let tag): listStore.setActiveTag(tag)
+        case .allLinks: listStore.setActiveTag(nil)
+        }
+        isFocused = true
+    }
+
+    private func move(by offset: Int) -> KeyPress.Result {
+        let rows = items
+        guard let index = rows.firstIndex(of: current) else { return .ignored }
+        let target = index + offset
+        guard rows.indices.contains(target) else { return .handled }
+        select(rows[target])
+        return .handled
+    }
+}
+
+/// One sidebar row: a brand-tinted symbol and the title on the selection pill.
+private struct SidebarRow: View {
+    let title: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+    @State private var isHovering = false
+
+    var body: some View {
+        HStack(spacing: Space.tight) {
+            Image(systemName: systemImage)
+                .foregroundStyle(Palette.accent)
+                .frame(width: 18)
+                .accessibilityHidden(true)
+            Text(title)
+                .foregroundStyle(isSelected ? Palette.accentText : Palette.textPrimary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+        }
+        .font(.body)
+        .padding(.horizontal, 20)
+        .frame(minHeight: 28)
+        .background { SelectionPill(isSelected: isSelected, isHovering: isHovering) }
+        .contentShape(Rectangle())
+        .onTapGesture(perform: action)
+        .onHover { isHovering = $0 }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityAction { action() }
     }
 }
 

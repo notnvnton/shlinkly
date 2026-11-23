@@ -121,7 +121,7 @@ private struct Promise: View {
         HStack(alignment: .top, spacing: 14) {
             Image(systemName: icon)
                 .font(.title3)
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(Palette.accent)
                 .frame(width: 28)
             Text(text)
                 .font(.callout)

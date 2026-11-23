@@ -82,6 +82,18 @@ public final class ShortURLListStore {
         self.debounce = debounce
     }
 
+    #if DEBUG
+    /// A store already showing `items`, for SwiftUI previews: it never talks
+    /// to a server (its client points nowhere).
+    public static func preview(items: [ShortURL]) -> ShortURLListStore {
+        let client = ShlinkClient(baseURL: URL(string: "https://preview.invalid/rest/v3/")!, apiKey: "preview")
+        let store = ShortURLListStore(client: client)
+        store.items = items
+        store.state = items.isEmpty ? .empty : .loaded
+        return store
+    }
+    #endif
+
     // MARK: - Intents
 
     /// Loads (or reloads) the first page, showing the full-screen spinner.

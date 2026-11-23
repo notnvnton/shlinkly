@@ -80,6 +80,10 @@ struct ShlinklyApp: App {
     private var rootContent: some View {
         RootView()
             .environment(appModel)
+            // The brand color as the tint of the whole window. Not the
+            // `AccentColor` asset: macOS ignores that unless the system accent
+            // is "Multicolor". Sheets and popovers re-apply it at their roots.
+            .brandTint()
             // The servers live in the (iCloud-synced) Keychain, which has no live
             // change notification — so re-read it whenever the app comes to the
             // foreground. A server added with iCloud sync on another device appears

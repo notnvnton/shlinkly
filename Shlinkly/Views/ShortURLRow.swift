@@ -23,32 +23,34 @@ struct ShortURLRow: View {
     }
 }
 
-/// The leading block of a short-URL row: the bold title (or the destination URL
+/// The leading block of a short-URL row: the title (or the destination URL
 /// when untitled) above the short code and a relative creation date. Shared by
-/// the plain ``ShortURLRow`` and the macOS hover row so both read identically.
+/// the plain ``ShortURLRow`` and the macOS list row so both read identically.
 struct ShortURLRowPrimary: View {
     let shortURL: ShortURL
+    /// The selected macOS row tints its title ``Palette/accentText``.
+    var isSelected = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(primaryText)
-                .font(.body.weight(.semibold))
+                .font(.body.weight(.medium))
                 .lineLimit(2)
-                .foregroundStyle(.primary)
+                .foregroundStyle(isSelected ? Palette.accentText : Palette.textPrimary)
 
             HStack(spacing: 5) {
                 Text(shortURL.shortCode)
                 Text("·")
                 Text(shortURL.dateCreated, format: .relative(presentation: .named))
             }
-            .font(.caption)
-            .foregroundStyle(.secondary)
+            .font(.footnote)
+            .foregroundStyle(Palette.textSecondary)
             .lineLimit(1)
         }
     }
 
-    /// The bold first line: the resolved title, or the destination URL when
-    /// the short URL has no title.
+    /// The first line: the resolved title, or the destination URL when the
+    /// short URL has no title.
     private var primaryText: String {
         if let title = shortURL.title, !title.isEmpty {
             return title
@@ -57,18 +59,16 @@ struct ShortURLRowPrimary: View {
     }
 }
 
-/// The trailing visit-count badge (eye + total) of a short-URL row. Pulled out
-/// so the macOS hover row can stack it with the Edit/Delete buttons and swap
-/// between them in place.
+/// The trailing visit count of a short-URL row: the number alone, monospaced.
+/// Pulled out so the macOS row can swap it with its hover actions in place.
 struct VisitsCountLabel: View {
     let total: Int
 
     var body: some View {
-        Label("\(total)", systemImage: "eye")
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .labelStyle(.titleAndIcon)
+        Text(total, format: .number)
+            .font(.footnote.weight(.medium))
             .monospacedDigit()
+            .foregroundStyle(Palette.textSecondary)
             .accessibilityLabel("\(total) visits")
     }
 }

@@ -70,6 +70,7 @@ struct SettingsView: View {
             }
             .sheet(item: $formRoute) { route in
                 serverForm(route)
+                    .brandTint()
             }
             .alert(
                 pendingRemoval.map { "Remove \"\($0.displayName)\"?" } ?? "Remove server?",
@@ -116,7 +117,7 @@ struct SettingsView: View {
                     } label: {
                         Label("Edit", systemImage: "pencil")
                     }
-                    .tint(.accentColor)
+                    .tint(Palette.accent)
                 }
             }
 
@@ -164,6 +165,7 @@ struct SettingsView: View {
                             .font(.callout)
                             .padding()
                             .frame(width: 260)
+                            .brandTint()
                     }
                 }
             }
@@ -266,7 +268,7 @@ private struct ServerRow: View {
                 HStack(spacing: 12) {
                     Image(systemName: "checkmark")
                         .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(Palette.accent)
                         .opacity(isActive ? 1 : 0)
                         .frame(width: 18)
 
@@ -295,7 +297,7 @@ private struct ServerRow: View {
 
             Button(action: onEdit) {
                 Image(systemName: "info.circle")
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(Palette.accent)
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Edit \(instance.displayName)")

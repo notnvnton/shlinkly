@@ -7,10 +7,9 @@ import SwiftUI
 
 /// A single tag chip, the shared style for tags across the app.
 ///
-/// Two sizes: ``Size/regular`` is the Lavender & Matte chip (a 26 pt
-/// ``Palette/accentSoft`` capsule) used on the detail screen; ``Size/compact``
-/// is the small muted chip the list rows still use, so they keep their height
-/// until the list is restyled.
+/// Both sizes are ``Palette/accentSoft`` capsules with ``Palette/accentText``
+/// labels. ``Size/regular`` (26 pt) is the detail screen's; ``Size/compact`` is
+/// the small chip of the list rows, sized so it doesn't inflate row height.
 ///
 /// Pass an `action` to make the chip tappable (it renders as a `Button` with a
 /// plain style and a capsule-tight hit area, so it can sit inside a row without
@@ -18,7 +17,7 @@ import SwiftUI
 /// non-interactive "+N" overflow indicator.
 struct TagChip: View {
     enum Size {
-        /// The small muted chip of the list rows.
+        /// The small chip of the list rows.
         case compact
         /// The detail screen's chip: 26 pt tall, accent-tinted.
         case regular
@@ -46,8 +45,8 @@ struct TagChip: View {
                 .lineLimit(1)
                 .padding(.horizontal, 8)
                 .padding(.vertical, 3)
-                .background(Color.secondary.opacity(0.14), in: Capsule())
-                .foregroundStyle(.secondary)
+                .background(Palette.accentSoft, in: Capsule())
+                .foregroundStyle(Palette.accentText)
                 // Confine the hit area to the visible capsule so taps don't
                 // bleed into the surrounding row.
                 .contentShape(Capsule())
