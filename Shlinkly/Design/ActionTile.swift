@@ -3,12 +3,13 @@
 //  Shlinkly
 //
 
+#if os(iOS)
 import SwiftUI
 
 /// The face of an action tile: an SF Symbol over a short label on a
-/// ``Palette/sunken`` tile (iOS) or a matte button face (macOS). It stretches
-/// to share its row equally with its neighbours (lay them out in an `HStack`
-/// with ``Space/tight`` spacing).
+/// ``Palette/sunken`` tile. It stretches to share its row equally with its
+/// neighbours (lay them out in an `HStack` with ``Space/tight`` spacing).
+/// iPhone only: the Mac header uses native push buttons instead.
 ///
 /// The symbol sits in a fixed 24×24 box, so every tile's label shares one
 /// baseline whatever the symbol's own height.
@@ -20,14 +21,8 @@ struct ActionTileLabel: View {
     let title: String
     let systemImage: String
 
-    /// 64 pt on iOS, 52 pt on macOS. A minimum, so large text can grow it.
-    private static var height: CGFloat {
-        #if os(macOS)
-        52
-        #else
-        64
-        #endif
-    }
+    /// 64 pt. A minimum, so large text can grow it.
+    private static let height: CGFloat = 64
 
     var body: some View {
         VStack(spacing: 6) {
@@ -43,26 +38,18 @@ struct ActionTileLabel: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
         }
-        .frame(maxWidth: .infinity, minHeight: max(Self.height, 44))
-        #if os(iOS)
+        .frame(maxWidth: .infinity, minHeight: Self.height)
         .background(Palette.sunken, in: RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
-        #endif
         .contentShape(RoundedRectangle(cornerRadius: Radius.tile, style: .continuous))
     }
 }
 
-/// The tiles' button style. iOS: the flat tile dims while pressed (no
-/// highlight, gloss or shadow). macOS: the convex ``MatteButtonStyle`` face at
-/// the tile's height and radius.
+/// The tiles' button style: the flat tile dims while pressed. No highlight,
+/// gloss or shadow.
 struct ActionTileButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
-        #if os(macOS)
-        MatteButtonStyle(minHeight: 52, cornerRadius: Radius.tile)
-            .makeBody(configuration: configuration)
-        #else
         configuration.label
             .opacity(configuration.isPressed ? 0.6 : 1)
-        #endif
     }
 }
 
@@ -86,3 +73,4 @@ struct ActionTile: View {
         .help(title)
     }
 }
+#endif

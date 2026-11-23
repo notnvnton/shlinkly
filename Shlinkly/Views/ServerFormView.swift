@@ -11,9 +11,11 @@ import ShlinklyCore
 /// connection before saving (health + an authorized probe), and only on success
 /// hands the validated instance back to the host via ``onConnected``.
 ///
-/// It owns no persistence and no navigation chrome: a host wraps it in a
-/// `NavigationStack` (Settings adds a Cancel button; onboarding pushes it) and
-/// reacts to ``onConnected`` by saving and dismissing/advancing.
+/// It owns no persistence and no navigation: a host wraps it in a
+/// `NavigationStack` (Settings presents it as a sheet; onboarding pushes it)
+/// and reacts to ``onConnected`` by saving and dismissing/advancing. Its
+/// actions follow each platform: one bottom bar on the Mac (Remove Server…,
+/// Cancel, Save), the navigation bar on the iPhone.
 struct ServerFormView: View {
     @State private var model: ServerFormModel
     /// Called after the green confirmation with the validated instance + key. It
@@ -21,9 +23,10 @@ struct ServerFormView: View {
     /// Keychain can fail (notably on macOS without the Keychain Sharing
     /// capability), in which case the form stays put and shows the error.
     private let onConnected: (ServerInstance, String) throws -> Void
-    /// When set (edit mode), a destructive "Remove Server" button is shown; the
-    /// host removes the instance and dismisses. Gives macOS — where Settings has
-    /// no swipe — a way to delete a server, and works on iOS too.
+    /// When set (edit mode), a destructive "Remove Server" action is shown (the
+    /// Mac's bottom bar, the iPhone's last row); the host removes the instance
+    /// and dismisses. Gives macOS — where Settings has no swipe — a way to
+    /// delete a server, and works on iOS too.
     private let onRemove: (() -> Void)?
 
     /// True when the form is presented modally (the Settings sheet): the form then
@@ -65,17 +68,82 @@ struct ServerFormView: View {
     /// Verbatim "?" popover beside the API key field. Markdown: `code` and
     /// **bold** render; the line break is preserved.
     private static let keyHelp = """
-    On your server, run `shlink api-key:generate` and copy the key — you can only see it once.
+    On your server, run `shlink api-key:generate` and copy the key. You can only see it once.
     Use an **unrestricted (admin)** key, or you'll only see part of your links.
     """
 
     var body: some View {
+        form
+            .navigationTitle(model.isEdit ? "Edit Server" : "Connect server")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .scrollDismissesKeyboard(.interactively)
+            .toolbar { iOSToolbar }
+            #else
+            // The system Settings look: grouped rows, label left, control right.
+            // The actions live in one bottom bar, never inside a section.
+            .formStyle(.grouped)
+            .safeAreaInset(edge: .bottom, spacing: 0) { macActionBar }
+            .frame(minWidth: 460, minHeight: 420)
+            #endif
+            // Block the silent interactive dismiss (iOS swipe-down; macOS click-away)
+            // while edits are pending, so changes can't be lost without a choice.
+            .interactiveDismissDisabled(presentedAsSheet && model.isDirty)
+            .alert("You have unsaved changes", isPresented: $showDiscardConfirm) {
+                Button("Don't Save", role: .destructive) { dismiss() }
+                Button("Keep Editing", role: .cancel) {}
+            }
+            .alert("Remove \"\(displayName)\"?", isPresented: $showRemoveConfirm) {
+                Button(model.editingKeyStorage == .iCloud ? "Remove from All Devices" : "Remove", role: .destructive) {
+                    onRemove?()
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(model.editingKeyStorage == .iCloud
+                    ? "This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too."
+                    : "This server is stored only on this device, so removing it won't affect your other devices.")
+            }
+            .alert("Couldn't save the server", isPresented: saveErrorBinding) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                if let saveErrorMessage {
+                    Text(saveErrorMessage)
+                }
+            }
+    }
+
+    // MARK: - Fields
+
+    @ViewBuilder
+    private var form: some View {
         @Bindable var model = model
         Form {
+            #if os(macOS)
+            // One section of related fields, each a labelled row.
+            Section("Server") {
+                TextField("Name", text: $model.name, prompt: Text("My Shlink (optional)"))
+                    .focused($focusedField, equals: .name)
+                TextField("Server URL", text: $model.urlText, prompt: Text("https://shlink.example.com"))
+                    .focused($focusedField, equals: .url)
+                LabeledContent {
+                    SecretField(placeholder: "API key", text: $model.apiKey, focus: $focusedField, focusValue: .key)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("API key")
+                        InfoPopoverButton(title: "Where do I get a key?", message: Self.keyHelp)
+                    }
+                }
+            }
+
+            Section {
+                keyStoragePicker
+            } footer: {
+                Text(storageCaption)
+            }
+            #else
             Section("Name") {
-                // labelsHidden + an in-field prompt so macOS doesn't render a
-                // left label column (the section header is the title). The field
-                // spans full width with the placeholder inside, matching iOS.
+                // labelsHidden + an in-field prompt: the section header is the
+                // title, the field spans the row.
                 TextField("Name", text: $model.name, prompt: Text("My Shlink (optional)"))
                     .labelsHidden()
                     .focused($focusedField, equals: .name)
@@ -85,11 +153,9 @@ struct ServerFormView: View {
                 TextField("Server URL", text: $model.urlText, prompt: Text("https://shlink.example.com"))
                     .labelsHidden()
                     .focused($focusedField, equals: .url)
-                    #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .keyboardType(.URL)
-                    #endif
             }
 
             Section {
@@ -102,80 +168,135 @@ struct ServerFormView: View {
             }
 
             Section {
-                SegmentedPicker("Key storage", selection: $model.keyStorage, options: [
-                    .init(value: .local, label: "On this device"),
-                    .init(value: .iCloud, label: "iCloud sync"),
-                ])
+                keyStoragePicker
+                    .labelsHidden()
             } header: {
                 Text("Key storage")
             } footer: {
                 Text(storageCaption)
             }
 
-            submitSection
-
-            if onRemove != nil {
-                removeSection
-            }
-        }
-        .navigationTitle(model.isEdit ? "Edit Server" : "Connect server")
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        .scrollDismissesKeyboard(.interactively)
-        .toolbar {
-            // Native keyboard-accessory "Done": a plain text button pushed to the
-            // trailing edge by a Spacer, shown only while a field is focused. No
-            // custom background/buttonStyle/tint — the glass capsule seen on iOS 26
-            // is the system Liquid Glass styling applied to keyboard toolbar items
-            // themselves, not chrome we add (and .buttonStyle(.plain) is
-            // unavailable on iOS 26, so it can't be flattened that way).
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") { focusedField = nil }
-                    .fontWeight(.semibold)
-            }
-        }
-        #endif
-        #if os(macOS)
-        .formStyle(.grouped)
-        .frame(minWidth: 460, minHeight: 520)
-        #endif
-        .toolbar {
-            // The form owns its Cancel when presented modally (Settings), so the
-            // close can route through the unsaved-changes guard. On macOS this
-            // `.cancellationAction` button is also what the Esc key triggers, so
-            // Esc lands in the same confirmation when there are pending edits.
-            if presentedAsSheet {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { attemptClose() }
+            if hasStatus {
+                Section {
+                    EmptyView()
+                } footer: {
+                    statusFooter
                 }
             }
-        }
-        // Block the silent interactive dismiss (iOS swipe-down; macOS click-away)
-        // while edits are pending, so changes can't be lost without a choice.
-        .interactiveDismissDisabled(presentedAsSheet && model.isDirty)
-        .alert("You have unsaved changes", isPresented: $showDiscardConfirm) {
-            Button("Don't Save", role: .destructive) { dismiss() }
-            Button("Keep Editing", role: .cancel) {}
-        }
-        .alert("Remove \"\(displayName)\"?", isPresented: $showRemoveConfirm) {
-            Button(model.editingKeyStorage == .iCloud ? "Remove from All Devices" : "Remove", role: .destructive) {
-                onRemove?()
+
+            // The iOS convention: a destructive row in its own last section.
+            if onRemove != nil {
+                Section {
+                    Button("Remove Server", role: .destructive) {
+                        showRemoveConfirm = true
+                    }
+                }
             }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text(model.editingKeyStorage == .iCloud
-                ? "This server is synced via iCloud. If you remove it here, you'll be signed out on your other devices too."
-                : "This server is stored only on this device, so removing it won't affect your other devices.")
-        }
-        .alert("Couldn't save the server", isPresented: saveErrorBinding) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            if let saveErrorMessage {
-                Text(saveErrorMessage)
-            }
+            #endif
         }
     }
+
+    /// The native segmented key-storage control, in brand color.
+    private var keyStoragePicker: some View {
+        Picker("Key storage", selection: $model.keyStorage) {
+            Text("On this device").tag(KeyStorage.local)
+            Text("iCloud sync").tag(KeyStorage.iCloud)
+        }
+        .pickerStyle(.segmented)
+        .brandSegmented()
+    }
+
+    // MARK: - Actions
+
+    /// Save (edit) or Connect (add). Disabled until the form can be submitted;
+    /// while the connection is being checked the title stays in the layout
+    /// (hidden) with a small spinner over it, so the button never resizes.
+    private var submitButton: some View {
+        Button(action: submit) {
+            Text(model.isEdit ? "Save" : "Connect")
+                .opacity(model.isValidating ? 0 : 1)
+                .overlay {
+                    if model.isValidating {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+        }
+        .disabled(!model.canSubmit)
+    }
+
+    #if os(macOS)
+    /// The sheet's one bottom bar, under a hairline: Remove Server… on the
+    /// leading side (edit only, system red), Cancel (sheet only) and Save /
+    /// Connect on the trailing side. The validation status sits above it.
+    private var macActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            VStack(alignment: .leading, spacing: Space.tight) {
+                if hasStatus {
+                    statusFooter
+                }
+                HStack(spacing: Space.tight) {
+                    if onRemove != nil {
+                        Button(role: .destructive) {
+                            showRemoveConfirm = true
+                        } label: {
+                            // Red set explicitly: the root brand tint must not
+                            // turn a destructive action lavender.
+                            Text("Remove Server…")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(.red)
+                    }
+                    Spacer(minLength: Space.tight)
+                    if presentedAsSheet {
+                        Button("Cancel") { attemptClose() }
+                            .buttonStyle(.bordered)
+                            .keyboardShortcut(.cancelAction)
+                    }
+                    submitButton
+                        .nativeProminentButtonStyle()
+                        .keyboardShortcut(.defaultAction)
+                }
+            }
+            .controlSize(.regular)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
+    }
+    #endif
+
+    #if os(iOS)
+    @ToolbarContentBuilder
+    private var iOSToolbar: some ToolbarContent {
+        // The form owns its Cancel when presented modally (Settings), so the
+        // close routes through the unsaved-changes guard. Onboarding pushes the
+        // form; the back button is the way out there.
+        if presentedAsSheet {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { attemptClose() }
+            }
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            submitButton
+                .fontWeight(.semibold)
+                .tint(Palette.accent)
+        }
+        // Native keyboard-accessory "Done": a plain text button pushed to the
+        // trailing edge by a Spacer, shown only while a field is focused. No
+        // custom background/buttonStyle/tint — the glass capsule seen on iOS 26
+        // is the system Liquid Glass styling applied to keyboard toolbar items
+        // themselves, not chrome we add (and .buttonStyle(.plain) is
+        // unavailable on iOS 26, so it can't be flattened that way).
+        ToolbarItemGroup(placement: .keyboard) {
+            Spacer()
+            Button("Done") { focusedField = nil }
+                .fontWeight(.semibold)
+        }
+    }
+    #endif
 
     /// Drives the save-failure alert; clears the message when dismissed.
     private var saveErrorBinding: Binding<Bool> {
@@ -192,27 +313,6 @@ struct ServerFormView: View {
         }
     }
 
-    /// Edit-only destructive action to delete this server (no swipe needed).
-    private var removeSection: some View {
-        Section {
-            Button(role: .destructive) {
-                showRemoveConfirm = true
-            } label: {
-                HStack {
-                    Spacer()
-                    Text("Remove Server")
-                    Spacer()
-                }
-            }
-            // Match the Save/Connect button's pill shape and height
-            // (`.controlSize(.large)`), but keep `.bordered` rather than
-            // `.borderedProminent` so the fill/colour is unchanged — it stays
-            // destructive red, never the prominent blue.
-            .buttonStyle(.bordered)
-            .controlSize(.large)
-        }
-    }
-
     /// A label for the remove confirmation: the entered name, else the URL host.
     private var displayName: String {
         let trimmed = model.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -223,38 +323,11 @@ struct ServerFormView: View {
         return "this server"
     }
 
-    // MARK: - Submit
+    // MARK: - Status
 
-    private var submitSection: some View {
-        Section {
-            Button(action: submit) {
-                // Built exactly like the onboarding "Connect your server" button
-                // (full width, .borderedProminent, .controlSize(.large)) so all the
-                // primary buttons share one height — no extra fixed height here.
-                // The title stays in the layout in both states (just hidden while
-                // validating) and the spinner is laid over the same frame, so the
-                // button's size never changes between states.
-                Text(model.isEdit ? "Save" : "Connect")
-                    .fontWeight(.semibold)
-                    .frame(maxWidth: .infinity)
-                    .opacity(model.isValidating ? 0 : 1)
-                    .overlay {
-                        if model.isValidating {
-                            // Standard circular spinner, shrunk so it isn't sized up
-                            // by the button's .large control size, and tinted to the
-                            // white title — it sits well within the button bounds.
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.white)
-                        }
-                    }
-            }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.large)
-            .disabled(!model.canSubmit)
-        } footer: {
-            statusFooter
-        }
+    /// Whether there is a validation result (error or confirmation) to show.
+    private var hasStatus: Bool {
+        model.errorMessage != nil || model.successMessage != nil
     }
 
     @ViewBuilder
@@ -273,16 +346,16 @@ struct ServerFormView: View {
     private var storageCaption: String {
         switch model.keyStorage {
         case .local:
-            return "Stored only on this device — it won't sync. Add this server separately on each of your devices."
+            return "Stored only on this device. It won't sync, so add this server separately on each of your devices."
         case .iCloud:
-            return "Synced across your devices via iCloud Keychain — end-to-end encrypted by Apple. We never see it."
+            return "Synced across your devices with iCloud Keychain, end-to-end encrypted by Apple. We never see it."
         }
     }
 
     private func submit() {
         Task {
             guard let validated = await model.validate() else { return }
-            // Let the green "Connected — N links found" line register before the
+            // Let the green "Connected. N links found." line register before the
             // host swaps the screen (onboarding → list) or closes the sheet.
             try? await Task.sleep(for: .seconds(0.5))
             do {
@@ -304,3 +377,35 @@ struct ServerFormView: View {
         saveErrorMessage = message
     }
 }
+
+// MARK: - Preview
+
+#if DEBUG
+/// The Edit Server sheet as Settings presents it: on the Mac with its bottom
+/// bar (Remove Server…, Cancel, Save), on the iPhone with Cancel / Save in the
+/// navigation bar and Remove Server as the last row. Nothing is saved.
+private struct EditServerPreview: View {
+    var body: some View {
+        NavigationStack {
+            ServerFormView(
+                mode: .edit(ServerInstance(name: "Home", baseURL: URL(string: "https://go.example.com")!,
+                                           keyStorage: .iCloud)),
+                existingKey: "preview-api-key",
+                presentedAsSheet: true,
+                onRemove: {}
+            ) { _, _ in }
+        }
+        .brandTint()
+    }
+}
+
+#Preview("Edit Server, light") {
+    EditServerPreview()
+        .preferredColorScheme(.light)
+}
+
+#Preview("Edit Server, dark") {
+    EditServerPreview()
+        .preferredColorScheme(.dark)
+}
+#endif

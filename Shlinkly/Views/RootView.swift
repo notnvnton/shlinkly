@@ -290,7 +290,7 @@ private struct TagSidebar: View {
         .focusEffectDisabled()
         .onKeyPress(.upArrow) { move(by: -1) }
         .onKeyPress(.downArrow) { move(by: 1) }
-        .background { SidebarBackdrop() }
+        .sidebarBackground()
         .navigationTitle(appModel.activeInstance?.displayName ?? "Shlinkly")
         .task { tagsStore.loadIfNeeded() }
     }
@@ -321,6 +321,20 @@ private struct TagSidebar: View {
         guard rows.indices.contains(target) else { return .handled }
         select(rows[target])
         return .handled
+    }
+}
+
+private extension View {
+    /// The sidebar column's background. From macOS 26: none at all, so the
+    /// system's floating, frosted Liquid Glass sidebar shows (the window's wash
+    /// sits under it). Below 26: the sidebar material with a lavender wash.
+    @ViewBuilder
+    func sidebarBackground() -> some View {
+        if #available(macOS 26, *) {
+            scrollContentBackground(.hidden)
+        } else {
+            background { SidebarBackdrop() }
+        }
     }
 }
 

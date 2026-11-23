@@ -62,12 +62,16 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .fontWeight(.semibold)
                 }
             }
+            #else
+            // One bottom bar for the sheet's actions, never inside a section.
+            .safeAreaInset(edge: .bottom, spacing: 0) { macActionBar }
+            #endif
             .sheet(item: $formRoute) { route in
                 serverForm(route)
                     .brandTint()
@@ -121,15 +125,41 @@ struct SettingsView: View {
                 }
             }
 
+            #if os(iOS)
+            // The iOS convention: the add action is the section's last row. The
+            // Mac has it in the bottom bar.
             Button {
                 formRoute = .add
             } label: {
                 Label("Add Server", systemImage: "plus")
             }
+            #endif
         } header: {
             Text("Servers")
         }
     }
+
+    #if os(macOS)
+    /// "Add Server…" on the leading side, Done (the main action) on the
+    /// trailing side, under a hairline.
+    private var macActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: Space.tight) {
+                Button("Add Server…") { formRoute = .add }
+                    .buttonStyle(.bordered)
+                Spacer(minLength: Space.tight)
+                Button("Done") { dismiss() }
+                    .nativeProminentButtonStyle()
+                    .keyboardShortcut(.defaultAction)
+            }
+            .controlSize(.regular)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
+    }
+    #endif
 
     /// Tapping the active server edits it; tapping another switches to it.
     private func select(_ instance: ServerInstance) {
@@ -161,7 +191,7 @@ struct SettingsView: View {
                     .buttonStyle(.borderless)
                     .accessibilityLabel("About “Show in menu bar only”")
                     .popover(isPresented: $showPresenceHelp) {
-                        Text("When on, Shlinkly lives only in the menu bar — no Dock icon. It's the tidiest, most convenient way to keep Shlinkly handy. When off, Shlinkly appears in both the Dock and the menu bar.")
+                        Text("When on, Shlinkly lives only in the menu bar, with no Dock icon. It's the tidiest, most convenient way to keep Shlinkly handy. When off, Shlinkly appears in both the Dock and the menu bar.")
                             .font(.callout)
                             .padding()
                             .frame(width: 260)
@@ -201,7 +231,7 @@ struct SettingsView: View {
             Text("About")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Shlinkly is open source. There's no Shlinkly cloud — your links and keys stay yours.")
+                Text("Shlinkly is open source. There's no Shlinkly cloud, so your links and keys stay yours.")
                 Text(versionString)
             }
         }
@@ -219,7 +249,9 @@ struct SettingsView: View {
 
     /// `v{CFBundleShortVersionString}` from the app bundle.
     private var versionString: String {
-        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        guard let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String else {
+            return "Version unknown"
+        }
         return "v\(version)"
     }
 

@@ -53,9 +53,9 @@ struct ShortURLFormView: View {
     /// The forwarding explanation shown in the info popover beside the toggle.
     /// Markdown: `**bold**` and `` `code` `` render in the popover.
     private static let forwardQueryHelp = """
-    What you add to a short link after **`?`** — usually **UTM tags** — is forwarded to the destination page when this is on.
+    What you add to a short link after **`?`**, usually **UTM tags**, is forwarded to the destination page when this is on.
 
-    So **one link covers every channel**: `example.com/sale?utm_source=email` for email, `?utm_source=twitter` for social — your analytics still sees the source.
+    So **one link covers every channel**: `example.com/sale?utm_source=email` for email, `?utm_source=twitter` for social. Your analytics still sees the source.
 
     Off: visitors reach the same page, without the extra parameters.
     """
@@ -63,14 +63,14 @@ struct ShortURLFormView: View {
     /// Explanation shown in the info popover beside the Visit limit toggle.
     private static let visitLimitHelp = """
     Caps how many times this link can be opened. **Off = unlimited.**
-    When the limit is reached, the link **stops redirecting** — visitors get a "not found" page (unless your server has a fallback redirect set). The link stays in your list; it isn't deleted.
+    When the limit is reached, the link **stops redirecting** and visitors get a "not found" page (unless your server has a fallback redirect set). The link stays in your list; it isn't deleted.
     Handy for one-time links or limited campaigns.
     """
 
     /// Explanation shown in the info popover beside the robots.txt toggle.
     private static let robotsHelp = """
     Controls whether search engines (Google, etc.) may crawl this short link.
-    **Off (default):** crawlers are asked not to follow it — keeps bots from inflating your visit stats and keeps the link out of search results.
+    **Off (default):** crawlers are asked not to follow it. That keeps bots from inflating your visit stats and keeps the link out of search results.
     **On:** search engines may index and follow it.
     """
 
@@ -133,13 +133,48 @@ struct ShortURLFormView: View {
             .navigationBarTitleDisplayMode(.inline)
             .scrollDismissesKeyboard(.interactively)
             #endif
+            #if os(iOS)
             .toolbar { toolbarContent }
+            #else
+            // One bottom bar for the sheet's actions, never inside a section.
+            .safeAreaInset(edge: .bottom, spacing: 0) { macActionBar }
+            #endif
             .task { tagsStore.loadIfNeeded() }
         }
         #if os(macOS)
         .frame(minWidth: 480, idealWidth: 520, minHeight: 560)
         #endif
     }
+
+    /// Create (new link) or Save (edit), the form's one main action.
+    private var submitTitle: String { model.isCreate ? "Create" : "Save" }
+
+    #if os(macOS)
+    /// Cancel and Create / Save on the trailing side, under a hairline.
+    private var macActionBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            HStack(spacing: Space.tight) {
+                Spacer(minLength: 0)
+                if model.isSubmitting {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.bordered)
+                    .keyboardShortcut(.cancelAction)
+                Button(submitTitle) { submit() }
+                    .nativeProminentButtonStyle()
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.canSubmit || model.isSubmitting)
+            }
+            .controlSize(.regular)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+        }
+        .background(.bar)
+    }
+    #endif
 
     // MARK: - Sections
 
@@ -251,8 +286,11 @@ struct ShortURLFormView: View {
 
     // MARK: - Toolbar
 
+    #if os(iOS)
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        // iPhone: Cancel leading, Create / Save in the confirmation slot. The
+        // Mac uses its bottom bar instead (no lone system footer).
         ToolbarItem(placement: .cancellationAction) {
             Button("Cancel") { dismiss() }
         }
@@ -260,11 +298,12 @@ struct ShortURLFormView: View {
             if model.isSubmitting {
                 ProgressView()
             } else {
-                Button(model.isCreate ? "Create" : "Done") { submit() }
+                Button(submitTitle) { submit() }
+                    .fontWeight(.semibold)
+                    .tint(Palette.accent)
                     .disabled(!model.canSubmit)
             }
         }
-        #if os(iOS)
         // Native keyboard-accessory "Done": plain trailing text button, shown only
         // while a field is focused. The glass capsule on iOS 26 is the system
         // Liquid Glass styling of keyboard toolbar items, not chrome we add.
@@ -273,8 +312,8 @@ struct ShortURLFormView: View {
             Button("Done") { focusedField = nil }
                 .fontWeight(.semibold)
         }
-        #endif
     }
+    #endif
 
     // MARK: - Helpers
 

@@ -85,21 +85,25 @@ struct VisitsChartCard: View {
         }
     }
 
-    /// People always; Bots only while they are drawn (exclude bots off).
+    /// People always (a brand square); Bots only while they are drawn
+    /// (exclude bots off), as a translucent brand square like the columns'
+    /// empty part.
     private var legend: some View {
         HStack(spacing: 10) {
-            legendItem("People", color: Palette.seriesPeople)
+            legendItem("People", fill: AnyShapeStyle(LinearGradient(
+                colors: [Palette.Bars.peopleTop, Palette.Bars.peopleBottom],
+                startPoint: .top, endPoint: .bottom)))
             if !store.excludeBots {
-                legendItem("Bots", color: Palette.seriesBots)
+                legendItem("Bots", fill: AnyShapeStyle(Palette.Bars.bots))
             }
         }
         .accessibilityElement(children: .combine)
     }
 
-    private func legendItem(_ title: String, color: Color) -> some View {
+    private func legendItem(_ title: String, fill: AnyShapeStyle) -> some View {
         HStack(spacing: 4) {
             RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(color)
+                .fill(fill)
                 .frame(width: 8, height: 8)
             Text(title)
                 .font(.footnote)
@@ -136,6 +140,17 @@ struct VisitsChartCard: View {
         isEnabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
+        #if os(macOS)
+        // Native push buttons, like Holds' "‹" / "›".
+        Button(action: action) {
+            Image(systemName: systemImage)
+        }
+        .disabled(!isEnabled)
+        .accessibilityLabel(label)
+        .help(label)
+        .nativeButtonStyle()
+        .controlSize(.small)
+        #else
         let button = Button(action: action) {
             Image(systemName: systemImage)
                 .font(.caption.weight(.semibold))
@@ -143,9 +158,6 @@ struct VisitsChartCard: View {
         }
         .disabled(!isEnabled)
         .accessibilityLabel(label)
-        #if os(macOS)
-        button.buttonStyle(.matteIcon(side: 26))
-        #else
         // The 44 pt touch minimum, borderless like the rest of the iPhone card.
         button
             .frame(width: 36, height: 44)
@@ -156,19 +168,30 @@ struct VisitsChartCard: View {
 
     // MARK: - Step picker
 
-    /// The chart's step control (Day / Week / Month / Year). Only "All time"
-    /// offers a choice, and only when the window is long enough for a coarser
-    /// step to be worth drawing; otherwise there is nothing to pick and it stays
-    /// out of the band.
+    /// The chart's step control (Day / Week / Month / Year), native: a small
+    /// pop-up menu on the Mac, a small segmented control on the iPhone. Only
+    /// "All time" offers a choice, and only when the window is long enough for
+    /// a coarser step to be worth drawing; otherwise there is nothing to pick
+    /// and it stays out of the band.
     @ViewBuilder
     private var groupingPicker: some View {
         let groupings = store.availableGroupings
         if store.state == .loaded, groupings.count > 1 {
-            SegmentedPicker("Group by",
-                            selection: groupingBinding,
-                            options: groupings.map { .init(value: $0, label: $0.label) },
-                            fillsWidth: false)
-                .fixedSize()
+            Picker("Group by", selection: groupingBinding) {
+                ForEach(groupings, id: \.self) { grouping in
+                    Text(grouping.label).tag(grouping)
+                }
+            }
+            .labelsHidden()
+            #if os(macOS)
+            .pickerStyle(.menu)
+            .tint(Palette.accent)
+            #else
+            .pickerStyle(.segmented)
+            .brandSegmented()
+            #endif
+            .controlSize(.small)
+            .fixedSize()
         }
     }
 
@@ -191,7 +214,7 @@ struct VisitsChartCard: View {
                 detail: message
             ) {
                 Button("Try Again") { store.load() }
-                    .stateButtonStyle()
+                    .stateButtonStyle(prominent: true)
             }
         case .empty:
             chartMessage(
@@ -201,7 +224,7 @@ struct VisitsChartCard: View {
             ) {
                 if store.canSuggestAllTime {
                     Button("See all time") { store.showAllTime() }
-                        .stateButtonStyle()
+                        .stateButtonStyle(prominent: true)
                 }
             }
         case .loaded:
@@ -254,22 +277,15 @@ struct VisitsChartCard: View {
 }
 
 extension View {
-    /// The empty- and error-state buttons: matte on macOS, bordered on iOS.
+    /// The empty- and error-state buttons: native bordered, or the prominent
+    /// brand style for a state's one main action (Liquid Glass on 26+).
     @ViewBuilder
     func stateButtonStyle(prominent: Bool = false) -> some View {
-        #if os(macOS)
         if prominent {
-            buttonStyle(.matteProminent)
+            nativeProminentButtonStyle()
         } else {
-            buttonStyle(.matte)
+            nativeButtonStyle()
         }
-        #else
-        if prominent {
-            buttonStyle(.borderedProminent)
-        } else {
-            buttonStyle(.bordered)
-        }
-        #endif
     }
 }
 

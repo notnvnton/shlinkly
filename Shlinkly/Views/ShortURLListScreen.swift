@@ -994,8 +994,8 @@ private struct RowTags: View {
 /// ``Palette/hairline`` separator inset to the text.
 ///
 /// Its trailing accessory swaps on hover: at rest it shows the visit count;
-/// with the cursor over the row the count fades out and matte Copy / Share /
-/// Edit / Delete buttons fade in *in the same place*. Delete routes through the
+/// with the cursor over the row the count fades out and native borderless
+/// Copy / Share / Edit / Delete icon buttons fade in *in the same place*. Delete routes through the
 /// same central confirmation as the context menu — it never deletes silently.
 /// The buttons capture their own clicks, and while hidden they ignore
 /// hit-testing so a click there still selects the row.
@@ -1065,42 +1065,53 @@ private struct MacLinkRow: View {
     }
 
     private var hoverActions: some View {
-        HStack(spacing: 4) {
-            Button(action: onCopy) {
-                actionIcon("doc.on.doc")
-            }
-            .help("Copy short URL")
-            .accessibilityLabel("Copy short URL")
+        HStack(spacing: 2) {
+            HoverIconButton(systemImage: "doc.on.doc", label: "Copy short URL", action: onCopy)
 
             if let url = URL(string: shortURL.shortUrl) {
                 ShareLink(item: url) {
-                    actionIcon("square.and.arrow.up")
+                    HoverIcon(systemImage: "square.and.arrow.up")
                 }
+                .buttonStyle(.borderless)
                 .help("Share")
                 .accessibilityLabel("Share")
             }
 
-            Button(action: onEdit) {
-                actionIcon("pencil")
-            }
-            .help("Edit")
-            .accessibilityLabel("Edit")
-
-            Button(role: .destructive, action: onDelete) {
-                Image(systemName: "trash")
-                    .font(.footnote)
-                    .foregroundStyle(.red)
-            }
-            .help("Delete")
-            .accessibilityLabel("Delete")
+            HoverIconButton(systemImage: "pencil", label: "Edit", action: onEdit)
+            HoverIconButton(systemImage: "trash", label: "Delete", role: .destructive, action: onDelete)
         }
-        .buttonStyle(.matteIcon(side: 26))
     }
+}
 
-    private func actionIcon(_ systemImage: String) -> some View {
+/// A native borderless icon button for the row's hover actions:
+/// ``Palette/textSecondary`` at rest, ``Palette/accent`` under the pointer.
+private struct HoverIconButton: View {
+    let systemImage: String
+    let label: String
+    var role: ButtonRole?
+    let action: () -> Void
+
+    var body: some View {
+        Button(role: role, action: action) {
+            HoverIcon(systemImage: systemImage)
+        }
+        .buttonStyle(.borderless)
+        .help(label)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The glyph of a hover action, tracking its own hover state.
+private struct HoverIcon: View {
+    let systemImage: String
+    @State private var isHovering = false
+
+    var body: some View {
         Image(systemName: systemImage)
-            .font(.footnote)
-            .foregroundStyle(Palette.accent)
+            .foregroundStyle(isHovering ? Palette.accent : Palette.textSecondary)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+            .onHover { isHovering = $0 }
     }
 }
 #endif
@@ -1187,7 +1198,7 @@ private struct ShortURLListScreenPreview: View {
         }
         return [
             link("launch", "Introducing the new Shlinkly", days: 1, visits: 1_284, tags: ["launch", "blog"]),
-            link("abs", "Audiobookshelf — self-hosted audiobooks and podcasts", days: 3, visits: 312,
+            link("abs", "Audiobookshelf: self-hosted audiobooks and podcasts", days: 3, visits: 312,
                  tags: ["selfhosted", "media", "audio", "reading"]),
             link("q3", nil, days: 9, visits: 21),
             link("talk", "Slides: Swift Charts without the band scale", days: 40, visits: 87, tags: ["talks"]),

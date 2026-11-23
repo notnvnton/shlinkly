@@ -28,6 +28,11 @@ struct ShlinklyApp: App {
     #endif
 
     init() {
+        #if os(iOS)
+        // Brand-colored selected segments on every native segmented control,
+        // set before the first picker exists.
+        NativeControlAppearance.configure()
+        #endif
         let model = AppModel()
         // Credentials come from Keychain-backed instances: bootstrap brings the
         // active server online, or leaves the app in onboarding when none exist.

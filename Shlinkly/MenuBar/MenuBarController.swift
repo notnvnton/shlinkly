@@ -285,7 +285,7 @@ final class MenuBarController: NSObject {
         if appModel.client == nil {
             // No server configured (or its key is unavailable): nothing to create
             // against, so the action is replaced by a clear, inert line.
-            menu.addItem(disabledItem(title: "No server — add one in Shlinkly"))
+            menu.addItem(disabledItem(title: "No server. Add one in Shlinkly."))
         } else {
             let title = isGenerating ? "Generating…" : "Generate from clipboard"
             let item = NSMenuItem(title: title, action: #selector(generateClicked), keyEquivalent: "")

@@ -100,12 +100,7 @@ enum Palette {
     #else
     static let sunken = Color("Sunken")
     #endif
-    /// The segmented control's track. Translucent on macOS.
-    #if os(macOS)
-    static let track = Color(light: rgba(0, 0, 0, 0.07), dark: rgba(255, 255, 255, 0.08))
-    #else
-    static let track = Color("Track")
-    #endif
+
     /// The 1 pt card outline.
     static let cardBorder = Color("CardBorder")
     /// Separators inside cards, chart grid lines.
@@ -122,8 +117,17 @@ enum Palette {
     static let buttonFill = Color("ButtonFill")
     /// Chart and breakdown bars.
     static let seriesPeople = Color("SeriesPeople")
-    /// The bots segment, "Unknown" bars.
+    /// The dimmed "Unknown" bars of the ranked breakdowns.
     static let seriesBots = Color("SeriesBots")
+
+    /// The visits chart's columns: people as a soft brand gradient, top to
+    /// bottom; bots as the same hue, translucent, above them — the empty part
+    /// of a glass tube filled to the people level.
+    enum Bars {
+        static let peopleTop = Color(light: hex(0x7A72CC), dark: hex(0xC4BEF0))
+        static let peopleBottom = Color(light: hex(0x5249A8), dark: hex(0x9C94E0))
+        static let bots = Color(light: hex(0x5249A8, alpha: 0.22), dark: hex(0xB3ACE6, alpha: 0.24))
+    }
 
     /// Dark-mode-only gradients. Light mode has no gradients anywhere.
     enum Gradients {
@@ -197,17 +201,22 @@ extension Palette {
     /// The translucent matte window (approved mockup values).
     enum Mac {
         /// The wash over the window's behind-window blur, top-left to
-        /// bottom-right.
+        /// bottom-right: lavender to a soft rose, clearly visible even over a
+        /// white window behind. `TextSecondary` on its light start stays above
+        /// 5:1 over any backdrop (6.1:1 over white, 5.0:1 over black).
         static let windowWash = LinearGradient(
-            colors: [
-                Color(light: rgba(247, 245, 251, 0.84), dark: rgba(40, 38, 52, 0.80)),
-                Color(light: rgba(245, 241, 246, 0.78), dark: rgba(29, 27, 37, 0.84)),
+            stops: [
+                .init(color: Color(light: rgba(233, 229, 248, 0.92), dark: rgba(44, 40, 62, 0.88)), location: 0),
+                .init(color: Color(light: rgba(240, 234, 246, 0.90), dark: rgba(36, 33, 50, 0.88)), location: 0.55),
+                .init(color: Color(light: rgba(246, 236, 240, 0.88), dark: rgba(40, 32, 40, 0.88)), location: 1),
             ],
             startPoint: .topLeading,
             endPoint: .bottomTrailing
         )
 
-        /// The lavender wash over the sidebar material, top to bottom.
+        /// The lavender wash over the sidebar material, top to bottom. Only
+        /// below macOS 26; from 26 the system's floating glass sidebar shows
+        /// through instead.
         static let sidebarWash = LinearGradient(
             colors: [
                 Color(light: rgba(232, 229, 243, 0.62), dark: rgba(50, 47, 66, 0.55)),

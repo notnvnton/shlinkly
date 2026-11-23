@@ -182,7 +182,7 @@ public final class ServerFormModel {
 
     static func connectedMessage(linkCount: Int) -> String {
         let noun = linkCount == 1 ? "link" : "links"
-        return "Connected — \(linkCount) \(noun) found"
+        return "Connected. \(linkCount) \(noun) found."
     }
 
     private func makeInstance(serverRoot: URL) -> ServerInstance {

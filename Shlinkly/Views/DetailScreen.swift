@@ -23,7 +23,7 @@ struct DetailScreen: View {
     @State private var isEditing = false
     @State private var pendingDelete: ShortURL?
     @State private var deleteError: String?
-    /// Drives the Copy tile's brief checkmark.
+    /// Drives the Copy action's brief checkmark (the iPhone tile, the Mac button).
     @State private var didCopyFromTile = false
     @State private var copyResetTask: Task<Void, Never>?
     @Environment(\.openURL) private var openURL
@@ -128,6 +128,15 @@ struct DetailScreen: View {
 
     @ToolbarContentBuilder
     private var detailToolbar: some ToolbarContent {
+        #if os(macOS)
+        // The period control lives in the title bar, centered over the detail
+        // column like Holds' Day / Week / Month. It belongs to this screen's
+        // toolbar, so with no link selected (the placeholder) it isn't shown.
+        ToolbarItem(placement: .principal) {
+            periodPicker
+                .fixedSize()
+        }
+        #endif
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button {
@@ -163,9 +172,9 @@ struct DetailScreen: View {
         Binding(get: { deleteError != nil }, set: { if !$0 { deleteError = nil } })
     }
 
-    /// The Copy tile: copies the short URL (the same thing every other copy
-    /// path copies) and swaps its icon to a checkmark for ~1.2s, like
-    /// ``CopyButton``.
+    /// The Copy action (iPhone tile, Mac button): copies the short URL (the
+    /// same thing every other copy path copies) and swaps its icon to a
+    /// checkmark and its label to "Copied" for ~1.2s, like ``CopyButton``.
     private func copyFromTile() {
         LinkActions.copyShortURL(shortURL)
         #if os(iOS)
@@ -184,24 +193,73 @@ struct DetailScreen: View {
 
     private var headerCard: some View {
         Card {
+            #if os(macOS)
+            // The link's identity on the left; the native Copy / Share / Open
+            // buttons on the right, vertically centered against it.
+            HStack(alignment: .center, spacing: Space.cardInset) {
+                headerDetails
+                macActionButtons
+                    .padding(.trailing, Space.cardInset)
+            }
+            #else
             VStack(alignment: .leading, spacing: 0) {
-                Text(headerTitle)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(Palette.textPrimary)
-                    .lineLimit(3)
-                    .padding(.horizontal, Space.cardInset)
-                    .padding(.top, 16)
-                    .padding(.bottom, 4)
-
-                shortURLRow
-                CardHairline()
-                destinationRow
-                CardHairline()
-                tagsBand
+                headerDetails
                 actionRow
             }
+            #endif
         }
     }
+
+    /// Title, short URL, destination and tags.
+    private var headerDetails: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(headerTitle)
+                .font(.title3.weight(.semibold))
+                .foregroundStyle(Palette.textPrimary)
+                .lineLimit(3)
+                .padding(.horizontal, Space.cardInset)
+                .padding(.top, 16)
+                .padding(.bottom, 4)
+
+            shortURLRow
+            CardHairline()
+            destinationRow
+            CardHairline()
+            tagsBand
+        }
+    }
+
+    #if os(macOS)
+    /// Native push buttons, like Holds' "Sync now" / "Pause" (Liquid Glass on
+    /// macOS 26). Share shares the short URL; Open opens the destination.
+    private var macActionButtons: some View {
+        HStack(spacing: Space.tight) {
+            Button(action: copyFromTile) {
+                Label(didCopyFromTile ? "Copied" : "Copy",
+                      systemImage: didCopyFromTile ? "checkmark" : "doc.on.doc")
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .help("Copy short URL")
+            if let shortLink = URL(string: shortURL.shortUrl) {
+                ShareLink(item: shortLink) {
+                    Label("Share", systemImage: "square.and.arrow.up")
+                }
+                .help("Share the short URL")
+            }
+            if let destinationURL {
+                Button {
+                    openURL(destinationURL)
+                } label: {
+                    Label("Open", systemImage: "arrow.up.right")
+                }
+                .help("Open the destination in the browser")
+            }
+        }
+        .nativeButtonStyle()
+        .controlSize(.regular)
+        .fixedSize()
+    }
+    #endif
 
     /// The short URL with its copy button. The button's 44 pt target is pulled
     /// in so its glyph, not its tap area, lines up with the card's text edge.
@@ -277,6 +335,7 @@ struct DetailScreen: View {
         .padding(.vertical, Space.labelBand)
     }
 
+    #if os(iOS)
     /// Copy, Share, Open. A fourth tile (QR code) is one more line here.
     private var actionRow: some View {
         HStack(spacing: Space.tight) {
@@ -302,6 +361,7 @@ struct DetailScreen: View {
         .padding(.horizontal, Space.cardInset)
         .padding(.bottom, Space.cardInset)
     }
+    #endif
 
     // MARK: - Link preview
 
@@ -315,16 +375,19 @@ struct DetailScreen: View {
 
     // MARK: - Visits card (period + metric tiles + bot toggle)
 
-    /// Period control, the three metric tiles and the bot toggle share one card:
-    /// they all govern the same period/visits data.
+    /// The three metric tiles and the bot toggle (and, on the iPhone, the
+    /// period control) share one card: they all govern the same period/visits
+    /// data. On the Mac the period control sits in the title bar instead.
     private var visitsCard: some View {
         Card("Visits") {
             VStack(alignment: .leading, spacing: 0) {
+                #if os(iOS)
                 periodPicker
                     .padding(.horizontal, Space.cardInset)
+                    .padding(.bottom, Space.labelBand)
+                #endif
                 metricTiles
                     .padding(.horizontal, Space.cardInset)
-                    .padding(.top, Space.labelBand)
                     .padding(.bottom, Space.cardInset)
                 CardHairline()
                 Toggle("Exclude bots", isOn: excludeBotsBinding)
@@ -338,12 +401,17 @@ struct DetailScreen: View {
         }
     }
 
+    /// The native segmented period control, in brand color: in the Mac title
+    /// bar, full width at the top of the iPhone's Visits card.
     private var periodPicker: some View {
-        SegmentedPicker("Period", selection: periodBinding, options: [
-            .init(value: .last7Days, label: "7 days"),
-            .init(value: .last30Days, label: "30 days"),
-            .init(value: .allTime, label: "All"),
-        ])
+        Picker("Period", selection: periodBinding) {
+            Text("7 days").tag(ShortURLDetailStore.Period.last7Days)
+            Text("30 days").tag(ShortURLDetailStore.Period.last30Days)
+            Text("All").tag(ShortURLDetailStore.Period.allTime)
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .brandSegmented()
     }
 
     /// Lifetime figures from the link's summary over the selected period's.

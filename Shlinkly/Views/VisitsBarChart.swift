@@ -64,33 +64,25 @@ struct VisitsBarChart: View {
 
     var body: some View {
         Chart {
-            // People at the bottom, bots stacked on top (only while bots are
-            // counted). Explicit `yStart`/`yEnd` ranges rather than Charts' own
-            // stacking, so the order is fixed and only the top segment of each
-            // column gets the rounded corners.
+            // One mark per column, so a column is one shape: one silhouette,
+            // one rounded top, no seam. Its fill is a gradient with a hard stop
+            // at the people level — translucent brand above (the bots, the
+            // "empty" part of the tube), the brand gradient below (the people).
+            // Charts maps a mark's gradient to the mark's own bounds (checked by
+            // rendering), so the stop lands exactly at `bots / total`. With bots
+            // excluded, the column is people only.
             ForEach(breakdowns) { column in
-                let showsBots = !excludeBots && column.bots > 0
-                let opacity = barOpacity(for: column.start)
+                let height = excludeBots ? column.people : column.total
                 BarMark(
                     x: .value("Date", column.start, unit: unit, calendar: calendar),
                     yStart: .value("Visits", 0),
-                    yEnd: .value("Visits", column.people),
+                    yEnd: .value("Visits", height),
                     width: barWidth.map { .fixed($0) } ?? .automatic
                 )
-                .foregroundStyle(Palette.seriesPeople)
-                .opacity(opacity)
-                .clipShape(barShape(isTop: !showsBots))
-                if showsBots {
-                    BarMark(
-                        x: .value("Date", column.start, unit: unit, calendar: calendar),
-                        yStart: .value("Visits", column.people),
-                        yEnd: .value("Visits", column.total),
-                        width: barWidth.map { .fixed($0) } ?? .automatic
-                    )
-                    .foregroundStyle(Palette.seriesBots)
-                    .opacity(opacity)
-                    .clipShape(barShape(isTop: true))
-                }
+                .foregroundStyle(columnFill(people: column.people, bots: excludeBots ? 0 : column.bots))
+                // With a column selected, the others recede, both parts together.
+                .opacity(barOpacity(for: column.start))
+                .clipShape(columnShape)
             }
             if let selectedBucket {
                 // A faint guide behind the bars. The callout is *not* an annotation
@@ -238,14 +230,31 @@ struct VisitsBarChart: View {
         return selectedBucket.start == columnStart ? 1 : 0.45
     }
 
-    /// A bar segment's clip: the top segment of a column gets rounded top
-    /// corners for a softer, less "spreadsheet" look; the segment under it
-    /// stays square so the stack reads as one bar.
-    private func barShape(isTop: Bool) -> UnevenRoundedRectangle {
-        let radius = isTop ? min(5, (barWidth ?? 10) / 2) : 0
+    /// A column's clip: rounded top corners only (radius `min(4, width / 2)`),
+    /// square at the baseline. The column is one mark, so this is its only
+    /// rounded edge.
+    private var columnShape: UnevenRoundedRectangle {
+        let radius = min(4, (barWidth ?? 8) / 2)
         return UnevenRoundedRectangle(topLeadingRadius: radius,
                                       topTrailingRadius: radius,
                                       style: .continuous)
+    }
+
+    /// A column's fill, top to bottom: the translucent bots part down to the
+    /// people level, then a flat, hard change into the people gradient. No
+    /// bots: the people gradient fills the whole column (and carries the
+    /// rounded top).
+    private func columnFill(people: Int, bots: Int) -> LinearGradient {
+        let total = people + bots
+        let level = total > 0 ? CGFloat(bots) / CGFloat(total) : 0
+        var stops: [Gradient.Stop] = []
+        if level > 0 {
+            stops.append(.init(color: Palette.Bars.bots, location: 0))
+            stops.append(.init(color: Palette.Bars.bots, location: level))
+        }
+        stops.append(.init(color: Palette.Bars.peopleTop, location: level))
+        stops.append(.init(color: Palette.Bars.peopleBottom, location: 1))
+        return LinearGradient(stops: stops, startPoint: .top, endPoint: .bottom)
     }
 
     // MARK: - Callout

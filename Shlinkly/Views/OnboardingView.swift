@@ -55,7 +55,7 @@ private struct WelcomeScreen: View {
                 .font(.title.weight(.semibold))
                 .multilineTextAlignment(.center)
 
-                Text("Private by design and fully open source — no Shlinkly cloud, no middleman.")
+                Text("Private by design and fully open source. No Shlinkly cloud, no middleman.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -68,11 +68,11 @@ private struct WelcomeScreen: View {
                     )
                     Promise(
                         icon: "icloud.slash",
-                        text: "There's no Shlinkly backend — nothing passes through us."
+                        text: "There's no Shlinkly backend, so nothing passes through us."
                     )
                     Promise(
                         icon: "chevron.left.forwardslash.chevron.right",
-                        text: "Open source — inspect every line on GitHub."
+                        text: "Open source. Inspect every line on GitHub."
                     )
                 }
                 .padding(.horizontal)
