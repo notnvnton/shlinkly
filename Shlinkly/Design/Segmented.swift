@@ -101,20 +101,24 @@ struct MacSegmented<Value: Hashable>: View {
     }
 }
 
-/// Lays its subviews out side by side, each as wide as the widest one's ideal
-/// width (CSS `grid-auto-columns: 1fr` in a shrink-wrapped grid), at the
-/// proposed height.
-private struct EqualWidthRow: Layout {
+/// Lays its subviews out side by side, `spacing` apart, each as wide as the
+/// widest one's ideal width (CSS `grid-auto-columns: 1fr` in a shrink-wrapped
+/// grid), at the proposed height. The segmented controls (no spacing) and
+/// ``MacButtonPair`` (8 pt) use it.
+struct EqualWidthRow: Layout {
+    var spacing: CGFloat = 0
+
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = widest(subviews)
         let height = proposal.height ?? subviews.map { $0.sizeThatFits(.unspecified).height }.max() ?? 0
-        return CGSize(width: width * CGFloat(subviews.count), height: height)
+        let gaps = spacing * CGFloat(max(subviews.count - 1, 0))
+        return CGSize(width: width * CGFloat(subviews.count) + gaps, height: height)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         let width = widest(subviews)
         for (index, subview) in subviews.enumerated() {
-            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * width, y: bounds.minY),
+            subview.place(at: CGPoint(x: bounds.minX + CGFloat(index) * (width + spacing), y: bounds.minY),
                           anchor: .topLeading,
                           proposal: ProposedViewSize(width: width, height: bounds.height))
         }

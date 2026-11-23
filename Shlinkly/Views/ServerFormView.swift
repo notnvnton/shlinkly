@@ -168,13 +168,21 @@ struct ServerFormView: View {
             }
             Spacer(minLength: 8)
             if presentedAsSheet {
-                Button("Cancel") { attemptClose() }
-                    .buttonStyle(.mac)
-                    .keyboardShortcut(.cancelAction)
+                // `.mbtn-pair`: Cancel and Save as one group, equal widths.
+                MacButtonPair {
+                    Button("Cancel") { attemptClose() }
+                        .buttonStyle(.mac)
+                        .keyboardShortcut(.cancelAction)
+                    submitButton
+                        .buttonStyle(.macPrimary)
+                        .keyboardShortcut(.defaultAction)
+                }
+            } else {
+                // Onboarding: no Cancel, so Connect stands alone.
+                submitButton
+                    .buttonStyle(.macPrimary)
+                    .keyboardShortcut(.defaultAction)
             }
-            submitButton
-                .buttonStyle(.macPrimary)
-                .keyboardShortcut(.defaultAction)
         }
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)

@@ -294,7 +294,7 @@ struct DetailScreen: View {
 
     /// Title (20 pt semibold), short URL (14 pt medium, `--brand-text`),
     /// destination (12 pt `--text2`), the tags with the creation date, then
-    /// Copy / Share / Open / QR code (`.mbtn`). 16 pt / 18 pt in, 6 pt apart.
+    /// Copy / Share / Open / QR code (`.mbtn-tint`). 16 pt / 18 pt in, 6 pt apart.
     private var macHeaderCard: some View {
         MacCard {
             VStack(alignment: .leading, spacing: 6) {
@@ -333,7 +333,7 @@ struct DetailScreen: View {
                     Button("QR code") { showQRCode = true }
                         .help("Show the QR code")
                 }
-                .buttonStyle(.mac)
+                .buttonStyle(.macTint)
                 .padding(.top, 8)
             }
             .padding(.horizontal, 18)

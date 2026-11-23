@@ -57,6 +57,9 @@ enum Palette {
     static let sheetBg = Color("SheetBg")
     /// `.callout` background (`--card` light, `#2B2A33` dark).
     static let calloutBg = Color("CalloutBg")
+    /// `--tint-text`: the label of a `.mbtn-tint` (same values as
+    /// `--pastel-text`, kept as its own token).
+    static let tintText = Color("TintText")
 
     // MARK: Translucent layers
 
@@ -92,6 +95,8 @@ enum Palette {
     static let mcard = Color(light: rgba(255, 255, 255, 0.78), dark: rgba(255, 255, 255, 0.05))
     /// `--mcard-border`.
     static let mcardBorder = Color(light: rgba(22, 21, 28, 0.07), dark: rgba(255, 255, 255, 0.06))
+    /// `--tint-border`: the 1 pt inner ring of a `.mbtn-tint`.
+    static let tintBorder = Color(light: rgba(67, 60, 140, 0.12), dark: rgba(255, 255, 255, 0.07))
     /// `--sel`: a selected `.mrow`.
     static let sel = Color(light: hex(0xE3E0F5), dark: rgba(169, 163, 230, 0.18))
 
@@ -114,6 +119,8 @@ enum Palette {
     /// `--btn2-bg`.
     static let btn2Fill = vertical(light: (hex(0xEFEEF3), hex(0xE5E4EB)),
                                    dark: (rgba(255, 255, 255, 0.10), rgba(255, 255, 255, 0.07)))
+    /// `--tint-bg`: the matte violet of a `.mbtn-tint`.
+    static let tintFill = vertical(light: (hex(0xECEAF8), hex(0xE0DDF3)), dark: (hex(0x45416A), hex(0x363352)))
     /// `--mbtn-bg`.
     static let mbtnFill = vertical(light: (hex(0xFFFFFF), hex(0xF4F3F7)),
                                    dark: (rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.08)))

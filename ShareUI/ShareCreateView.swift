@@ -276,16 +276,16 @@ struct ShareCreateView: View {
     /// sandboxed share extension, and macOS share extensions can't reach the
     /// messengers people actually want. The short URL is already on the
     /// clipboard, so the user can paste it anywhere: Open in Shlinkly and Done,
-    /// as `.mbtn` / `.mbtn-primary`.
+    /// as `.mbtn-tint` / `.mbtn-primary` (the app's rule: actions are tint).
     private func macSuccessActions(shortCode: String) -> some View {
         HStack(spacing: 8) {
             Spacer(minLength: 0)
             if let deepLink = deepLink(shortCode: shortCode) {
                 Button("Open in Shlinkly") { onOpenInApp(deepLink) }
-                    .buttonStyle(ShareMacButtonStyle(primary: false))
+                    .buttonStyle(ShareMacButtonStyle(kind: .tint))
             }
             Button("Done", action: onDone)
-                .buttonStyle(ShareMacButtonStyle(primary: true))
+                .buttonStyle(ShareMacButtonStyle(kind: .primary))
                 .keyboardShortcut(.defaultAction)
         }
     }
@@ -318,7 +318,7 @@ struct ShareCreateView: View {
                 if canRetry {
                     #if os(macOS)
                     Button("Retry") { attempt += 1 }
-                        .buttonStyle(ShareMacButtonStyle(primary: false))
+                        .buttonStyle(ShareMacButtonStyle(kind: .tint))
                     #else
                     Button("Retry") { attempt += 1 }
                         .buttonStyle(.plain)
@@ -329,7 +329,7 @@ struct ShareCreateView: View {
                 }
                 #if os(macOS)
                 Button("Done", action: onDone)
-                    .buttonStyle(ShareMacButtonStyle(primary: true))
+                    .buttonStyle(ShareMacButtonStyle(kind: .primary))
                 #endif
             }
             .padding(.top, 4)
@@ -421,8 +421,6 @@ private enum ShareTheme {
     static let card = adaptive(light: (0xFF, 0xFF, 0xFF, 1), dark: (255, 255, 255, 0.055))
     /// `--card-border`.
     static let cardBorder = adaptive(light: (0xE4, 0xE4, 0xEA, 1), dark: (255, 255, 255, 0.06))
-    /// `--mbtn-border`.
-    static let mbtnBorder = adaptive(light: (0xD9, 0xD9, 0xE1, 1), dark: (255, 255, 255, 0.06))
     /// `--btn-shadow` top highlight and drop.
     static let btnHighlight = adaptive(light: (255, 255, 255, 0.16), dark: (255, 255, 255, 0.08))
     static let btnDrop = adaptive(light: (40, 30, 90, 0.16), dark: (0, 0, 0, 0.30))
@@ -446,11 +444,18 @@ private enum ShareTheme {
         adaptive(light: (0xEF, 0xEE, 0xF3, 1), dark: (255, 255, 255, 0.10)),
         adaptive(light: (0xE5, 0xE4, 0xEB, 1), dark: (255, 255, 255, 0.07)),
     ], startPoint: .top, endPoint: .bottom)
-    /// `--mbtn-bg`.
-    static let mbtnFill = LinearGradient(colors: [
-        adaptive(light: (0xFF, 0xFF, 0xFF, 1), dark: (255, 255, 255, 0.11)),
-        adaptive(light: (0xF4, 0xF3, 0xF7, 1), dark: (255, 255, 255, 0.08)),
+    /// `--tint-bg`.
+    static let tintFill = LinearGradient(colors: [
+        adaptive(light: (0xEC, 0xEA, 0xF8, 1), dark: (0x45, 0x41, 0x6A, 1)),
+        adaptive(light: (0xE0, 0xDD, 0xF3, 1), dark: (0x36, 0x33, 0x52, 1)),
     ], startPoint: .top, endPoint: .bottom)
+    /// `--tint-text`.
+    static let tintText = adaptive(light: (0x32, 0x2C, 0x78, 1), dark: (0xDC, 0xD9, 0xF7, 1))
+    /// `--tint-border`.
+    static let tintBorder = adaptive(light: (67, 60, 140, 0.12), dark: (255, 255, 255, 0.07))
+    /// `--hover-lift` and `--press-dim` (`.mbtn` states).
+    static func hoverLift(_ scheme: ColorScheme) -> Double { scheme == .dark ? 1.12 : 0.97 }
+    static func pressDim(_ scheme: ColorScheme) -> Double { scheme == .dark ? 0.88 : 0.93 }
 
     typealias Channels = (Double, Double, Double, Double)
 
@@ -532,36 +537,83 @@ private struct ShareLargeButtonStyle: ButtonStyle {
 
 #if os(macOS)
 /// `.mbtn` / `.mbtn-primary`: 26 pt, radius 6, 13 pt medium, at least 76 wide.
+/// The app's `MacButtonStyle`, as far as this extension uses it: `.mbtn-tint`
+/// (Open in Shlinkly, Retry) and `.mbtn-primary` (Done), 26 pt, radius 6,
+/// 13 pt medium, at least 76 wide. The same states as the app: hover =
+/// brightness × `--hover-lift`; pressed = brightness × `--press-dim`, scale
+/// 0.97, outer shadow (and the primary's top highlight) off; 120 ms into
+/// pressed, 160 ms back out and for hover; disabled = 40%, no reaction.
 private struct ShareMacButtonStyle: ButtonStyle {
-    let primary: Bool
+    enum Kind {
+        case tint
+        case primary
+    }
+
+    let kind: Kind
 
     func makeBody(configuration: Configuration) -> some View {
+        ShareMacButtonBody(configuration: configuration, kind: kind)
+    }
+}
+
+private struct ShareMacButtonBody: View {
+    let configuration: ButtonStyleConfiguration
+    let kind: ShareMacButtonStyle.Kind
+    @Environment(\.isEnabled) private var isEnabled
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isHovering = false
+
+    var body: some View {
+        let pressed = configuration.isPressed && isEnabled
+        let hovering = isHovering && isEnabled
+        let factor = pressed ? ShareTheme.pressDim(colorScheme) : (hovering ? ShareTheme.hoverLift(colorScheme) : 1)
+        face(pressed: pressed)
+            // CSS `brightness()`: a multiply below 1; above 1 a copy times
+            // (factor − 1) added on top, as the app's `cssBrightness(_:)`.
+            .colorMultiply(Color(white: min(factor, 1)))
+            .overlay {
+                face(pressed: pressed)
+                    .colorMultiply(Color(white: min(factor, 1)))
+                    .colorMultiply(Color(white: max(factor - 1, 0)))
+                    .blendMode(.plusLighter)
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
+            .scaleEffect(pressed ? 0.97 : 1)
+            .animation(.easeInOut(duration: pressed ? 0.12 : 0.16), value: pressed)
+            .animation(.easeInOut(duration: 0.16), value: hovering)
+            .opacity(isEnabled ? 1 : 0.4)
+            .onHover { isHovering = $0 }
+    }
+
+    private func face(pressed: Bool) -> some View {
         let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
         return configuration.label
             .shareFont(13, .medium)
-            .foregroundStyle(primary ? ShareTheme.onBrand : ShareTheme.text)
+            .foregroundStyle(kind == .primary ? ShareTheme.onBrand : ShareTheme.tintText)
             .lineLimit(1)
             .padding(.horizontal, 12)
             .frame(height: 26)
             .frame(minWidth: 76)
             .background {
-                if primary {
+                switch kind {
+                case .primary:
                     shape
                         .fill(ShareTheme.brandFill)
                         .overlay {
                             shape.fill(ShareTheme.btnHighlight)
                                 .mask(alignment: .top) { Rectangle().frame(height: 1) }
+                                .opacity(pressed ? 0 : 1)
                         }
-                        .shadow(color: ShareTheme.btnDrop, radius: 1, y: 1)
-                } else {
+                        .shadow(color: pressed ? .clear : ShareTheme.btnDrop, radius: 1, y: 1)
+                case .tint:
                     shape
-                        .fill(ShareTheme.mbtnFill)
-                        .overlay { shape.strokeBorder(ShareTheme.mbtnBorder, lineWidth: 1) }
-                        .shadow(color: .black.opacity(0.04), radius: 0.5, y: 1)
+                        .fill(ShareTheme.tintFill)
+                        .overlay { shape.strokeBorder(ShareTheme.tintBorder, lineWidth: 1) }
+                        .shadow(color: .black.opacity(pressed ? 0 : 0.04), radius: 0.5, y: 1)
                 }
             }
             .contentShape(shape)
-            .brightness(configuration.isPressed ? -0.04 : 0)
     }
 }
 #endif

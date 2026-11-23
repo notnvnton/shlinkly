@@ -167,7 +167,9 @@ extension View {
     /// A `.mfield` value's placeholder, drawn where the typed text goes: at
     /// the trailing edge, 13 pt, `--text2` (`.mfield input { text-align:
     /// right }`), while `isEmpty`. Apply it to the field itself, with an empty
-    /// `prompt`, so it ends inside the field (before a "Show" button).
+    /// `prompt`, so it ends inside the field (before a "Show" button). The
+    /// Short code's slug field passes `.leading`: its text starts right after
+    /// the host's "/".
     ///
     /// Not the field's `prompt`: a styled prompt reaches AppKit as an
     /// attributed placeholder with no paragraph style, which AppKit draws at
@@ -175,8 +177,8 @@ extension View {
     /// the alignment but takes the system placeholder color, not `--text2`.
     /// Flush with the field's trailing edge, which is where AppKit ends
     /// right-aligned typed text, while editing and at rest.
-    func macPlaceholder(_ text: String, isEmpty: Bool) -> some View {
-        overlay(alignment: .trailing) {
+    func macPlaceholder(_ text: String, isEmpty: Bool, alignment: Alignment = .trailing) -> some View {
+        overlay(alignment: alignment) {
             if isEmpty {
                 Text(text)
                     .layoutFont(13)
@@ -186,6 +188,24 @@ extension View {
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
             }
+        }
+    }
+}
+
+/// Sizes itself, and every subview, to its first subview: the Short code's
+/// slug field is as wide as an invisible text of its value (or of the
+/// placeholder), like CSS `field-sizing: content`. The proposal is passed on,
+/// so the text, and with it the field, can shrink when the row runs out of
+/// space; the field then scrolls its text.
+struct SizedByFirst: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        subviews.first?.sizeThatFits(proposal) ?? .zero
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for subview in subviews {
+            subview.place(at: bounds.origin, anchor: .topLeading,
+                          proposal: ProposedViewSize(width: bounds.width, height: bounds.height))
         }
     }
 }

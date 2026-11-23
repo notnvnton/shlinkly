@@ -154,13 +154,17 @@ struct ShortURLFormView: View {
                 ProgressView()
                     .controlSize(.small)
             }
-            Button("Cancel") { dismiss() }
-                .buttonStyle(.mac)
-                .keyboardShortcut(.cancelAction)
-            Button(submitTitle) { submit() }
-                .buttonStyle(.macPrimary)
-                .keyboardShortcut(.defaultAction)
-                .disabled(!model.canSubmit || model.isSubmitting)
+            // `.mbtn-pair`: Cancel and Create link / Save as one group, equal
+            // widths.
+            MacButtonPair {
+                Button("Cancel") { dismiss() }
+                    .buttonStyle(.mac)
+                    .keyboardShortcut(.cancelAction)
+                Button(submitTitle) { submit() }
+                    .buttonStyle(.macPrimary)
+                    .keyboardShortcut(.defaultAction)
+                    .disabled(!model.canSubmit || model.isSubmitting)
+            }
         }
         .frame(width: 500)
         .frame(minHeight: 420, idealHeight: 600)
@@ -179,8 +183,13 @@ struct ShortURLFormView: View {
         .macField(height: height)
     }
 
-    /// Create: the server's host in `--text2`, then the custom code (110 pt,
-    /// left-aligned). Edit: the short URL, read-only, with a copy button.
+    /// Create (`MacLinkSheet`): one block flush with the trailing edge, where
+    /// Long URL and Title end: the server's host and "/" in `--text2`, then
+    /// the custom-slug field, no gap. The field is as wide as its text (or its
+    /// placeholder), so typing grows the block to the left; when the row runs
+    /// out of space the host truncates first (from its start, keeping the
+    /// "/"), then the slug scrolls in its field. Edit: the short URL,
+    /// read-only, with a copy button.
     @ViewBuilder
     private var shortCodeValue: some View {
         @Bindable var model = model
@@ -191,13 +200,20 @@ struct ShortURLFormView: View {
                     Text("\(slugPrefix)/")
                         .foregroundStyle(Palette.text2)
                         .lineLimit(1)
+                        .truncationMode(.head)
                 }
-                TextField("Custom slug", text: $model.customSlug,
-                          prompt: Text("custom-slug").foregroundStyle(Palette.text2))
-                    .focused($focusedField, equals: .slug)
-                    .multilineTextAlignment(.leading)
-                    .frame(width: 110)
-                    .onChange(of: model.customSlug) { _, _ in model.clearSlugError() }
+                SizedByFirst {
+                    Text(model.customSlug.isEmpty ? "custom-slug" : model.customSlug)
+                        .lineLimit(1)
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                    TextField("Custom slug", text: $model.customSlug, prompt: Text(""))
+                        .focused($focusedField, equals: .slug)
+                        .multilineTextAlignment(.leading)
+                        .onChange(of: model.customSlug) { _, _ in model.clearSlugError() }
+                }
+                .macPlaceholder("custom-slug", isEmpty: model.customSlug.isEmpty, alignment: .leading)
+                .layoutPriority(1)
             }
         } else {
             HStack(spacing: 6) {

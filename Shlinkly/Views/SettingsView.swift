@@ -106,7 +106,7 @@ struct SettingsView: View {
                         }
                     }
                     Button("Add Server…") { formRoute = .add }
-                        .buttonStyle(.mac)
+                        .buttonStyle(.macTint)
                         .padding(.top, 8)
                 }
 
@@ -186,7 +186,7 @@ struct SettingsView: View {
                     .accessibilityLabel("Key synced via iCloud")
             }
             Button("Edit") { formRoute = .edit(instance) }
-                .buttonStyle(MacButtonStyle(minWidth: 56))
+                .buttonStyle(MacButtonStyle(kind: .tint, minWidth: 56))
                 .accessibilityLabel("Edit \(instance.displayName)")
         }
         .macField(height: 48)

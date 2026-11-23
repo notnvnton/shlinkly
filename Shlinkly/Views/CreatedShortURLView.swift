@@ -65,7 +65,9 @@ struct CreatedShortURLView: View {
                 ShareLink(item: url) {
                     Text("Share")
                 }
-                .buttonStyle(.mac)
+                // Not drawn: an action button, so `.mbtn-tint` like the QR
+                // sheet's Share….
+                .buttonStyle(.macTint)
             }
             Button("Done", action: onDone)
                 .buttonStyle(.macPrimary)

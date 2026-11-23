@@ -259,16 +259,16 @@ struct QRCodeSheet: View {
                 Button(action: copyImage) {
                     copyLabel("Copy Image")
                 }
-                .buttonStyle(.mac)
+                .buttonStyle(.macTint)
                 .disabled(export == nil)
                 if let export {
                     ShareLink(item: export, preview: preview) {
                         Text("Share…")
                     }
-                    .buttonStyle(.mac)
+                    .buttonStyle(.macTint)
                 } else {
                     Button("Share…") {}
-                        .buttonStyle(.mac)
+                        .buttonStyle(.macTint)
                         .disabled(true)
                 }
                 Spacer(minLength: 8)
