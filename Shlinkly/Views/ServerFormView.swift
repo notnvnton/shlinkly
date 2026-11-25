@@ -58,7 +58,15 @@ struct ServerFormView: View {
         onRemove: (() -> Void)? = nil,
         onConnected: @escaping (ServerInstance, String) throws -> Void
     ) {
+        #if DEBUG
+        // Demo mode (Debug only): connection checks go to the demo server, never
+        // the network. Otherwise the default session, as in Release.
+        _model = State(initialValue: DemoMode.isOn
+            ? ServerFormModel(mode: mode, existingKey: existingKey, urlSession: DemoMode.urlSession)
+            : ServerFormModel(mode: mode, existingKey: existingKey))
+        #else
         _model = State(initialValue: ServerFormModel(mode: mode, existingKey: existingKey))
+        #endif
         self.presentedAsSheet = presentedAsSheet
         self.onRemove = onRemove
         self.onConnected = onConnected

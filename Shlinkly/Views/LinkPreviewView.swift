@@ -174,6 +174,12 @@ enum LinkPreviewCache {
     }
 
     private static func fetch(_ url: URL) async -> Phase {
+        #if DEBUG
+        // Demo mode (Debug only): the dataset's title, no icon, no request.
+        if DemoMode.isOn {
+            return .loaded(title: DemoMode.previewTitle(for: url), icon: nil)
+        }
+        #endif
         do {
             // A fresh provider per fetch: each instance is single-use.
             let provider = LPMetadataProvider()

@@ -32,11 +32,25 @@ struct CreateShortLinkIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<URL> {
         let client: ShlinkClient
+        #if DEBUG
+        // Demo mode (Debug only): the demo server, never the real Keychain.
+        if DemoMode.isOn {
+            guard let demoClient = DemoMode.activeClient() else { throw CreateShortLinkError.noServer }
+            client = demoClient
+        } else {
+            do {
+                client = try ActiveServerResolver.resolve().client
+            } catch {
+                throw CreateShortLinkError.noServer
+            }
+        }
+        #else
         do {
             client = try ActiveServerResolver.resolve().client
         } catch {
             throw CreateShortLinkError.noServer
         }
+        #endif
 
         let created: ShortURL
         do {

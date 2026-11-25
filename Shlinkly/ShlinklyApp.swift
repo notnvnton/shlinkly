@@ -28,7 +28,14 @@ struct ShlinklyApp: App {
     #endif
 
     init() {
+        #if DEBUG
+        // Debug builds only: `-ShlinklyDemo YES` runs the app on an invented,
+        // in-memory dataset for screenshots (`DemoMode`). Without the argument
+        // this is the plain `AppModel()`.
+        let model = DemoMode.isOn ? DemoMode.makeAppModel() : AppModel()
+        #else
         let model = AppModel()
+        #endif
         // Credentials come from Keychain-backed instances: bootstrap brings the
         // active server online, or leaves the app in onboarding when none exist.
         model.bootstrap()
@@ -78,6 +85,9 @@ struct ShlinklyApp: App {
             SettingsView()
                 .environment(appModel)
                 .brandTint()
+                #if DEBUG
+                .demoAppStorage()
+                #endif
         }
 
         // The menu-bar item is no longer a SwiftUI `MenuBarExtra` scene: it's a
@@ -97,6 +107,9 @@ struct ShlinklyApp: App {
     private var rootContent: some View {
         RootView()
             .environment(appModel)
+            #if DEBUG
+            .demoAppStorage()
+            #endif
             // The brand color as the tint of the whole window. Not the
             // `AccentColor` asset: macOS ignores that unless the system accent
             // is "Multicolor". Sheets and popovers re-apply it at their roots.
