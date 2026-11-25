@@ -426,8 +426,7 @@ struct DetailScreen: View {
         }
         .padding(.horizontal, 20)
         .padding(.bottom, 22)
-        .frame(maxWidth: 680, alignment: .leading)
-        .frame(maxWidth: .infinity)
+        .contentColumn()
     }
 
     /// No card: title (22 pt semibold), short URL (16 pt medium,
@@ -542,7 +541,7 @@ struct DetailScreen: View {
     /// Share (secondary) and Copy link (primary). Opening the destination is
     /// the destination line and the preview row.
     private var phoneBottomBar: some View {
-        BottomBar {
+        BottomBar(column: true) {
             if let shortLink = URL(string: shortURL.shortUrl) {
                 ShareLink(item: shortLink) {
                     Text("Share")

@@ -128,6 +128,12 @@ struct Footnote: View {
     }
 }
 
+enum LayoutMetrics {
+    /// The width of the centered content column: the detail on iOS, and on
+    /// iPad also the list and the list's and detail's bottom bars.
+    static let contentColumnWidth: CGFloat = 680
+}
+
 extension View {
     /// `.row` / `.field` (iPhone): at least 48 pt, 16 pt in, 16 pt text.
     func layoutRow(minHeight: CGFloat = 48) -> some View {
@@ -135,6 +141,20 @@ extension View {
             .foregroundStyle(Palette.text)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, minHeight: minHeight, alignment: .leading)
+    }
+
+    /// The centered content column (`max-width: 680px; margin: 0 auto` on
+    /// the iPad artboards): at most ``LayoutMetrics/contentColumnWidth``
+    /// wide, horizontal padding included, centered in the full width. When
+    /// `enabled` is false the view is returned as it is.
+    @ViewBuilder
+    func contentColumn(_ enabled: Bool = true) -> some View {
+        if enabled {
+            frame(maxWidth: LayoutMetrics.contentColumnWidth, alignment: .leading)
+                .frame(maxWidth: .infinity)
+        } else {
+            self
+        }
     }
 
     /// `.mfield` (Mac): 30 pt by default, 14 pt in, 13 pt text.
@@ -304,21 +324,44 @@ extension View {
 }
 #endif
 
+/// The device is an iPad (also an iPad app in Split View or Slide Over).
+/// Not the size class: an iPhone Plus / Pro Max in landscape is regular too.
+enum DeviceIdiom {
+    static var isPad: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+}
+
 /// `.bottombar` (iPhone): the screen's main actions, 12 pt apart, 20 pt in,
 /// 12 pt above. The artboard's 34 pt below is the home-indicator area, which
 /// the bottom safe area already provides. Sits on the screen background.
+///
+/// iPad: at least the side inset below the buttons (`.bottombar` padding
+/// `12px 20px 20px` on the iPad artboards). A centered sheet has no bottom
+/// safe area, so the inset itself is added there; full screen, the home
+/// indicator's safe area covers it. `column: true` keeps the buttons in the
+/// content column (the list and the detail); the background stays full
+/// width. On iPhone neither applies, so the bar is laid out as before.
 struct BottomBar<Content: View>: View {
+    /// The side inset, and on iPad the least room below the buttons.
+    private static var inset: CGFloat { 20 }
+
     private let vertical: Bool
     private let spacing: CGFloat
+    private let column: Bool
     private let content: Content
+    /// iPad only. `nil` until measured, which counts as "the safe area covers
+    /// the inset" (no extra padding), so a full-screen bar never moves.
+    @State private var bottomSafeArea: CGFloat?
 
-    init(vertical: Bool = false, spacing: CGFloat = 12, @ViewBuilder content: () -> Content) {
+    init(vertical: Bool = false, spacing: CGFloat = 12, column: Bool = false,
+         @ViewBuilder content: () -> Content) {
         self.vertical = vertical
         self.spacing = spacing
+        self.column = column
         self.content = content()
     }
 
     var body: some View {
+        let isPad = DeviceIdiom.isPad
         Group {
             if vertical {
                 VStack(spacing: spacing) { content }
@@ -326,9 +369,36 @@ struct BottomBar<Content: View>: View {
                 HStack(spacing: spacing) { content }
             }
         }
-        .padding(.horizontal, 20)
+        .padding(.horizontal, Self.inset)
         .padding(.top, 12)
+        .padding(.bottom, isPad ? padBottomPadding : 0)
+        .contentColumn(column && isPad)
         .background { Palette.bgSolid.ignoresSafeArea() }
+        .modifier(BottomSafeAreaReader(isActive: isPad, value: $bottomSafeArea))
+    }
+
+    private var padBottomPadding: CGFloat {
+        guard let bottomSafeArea else { return 0 }
+        return max(0, Self.inset - bottomSafeArea)
+    }
+}
+
+/// Reports the bottom safe area of the view it is applied to, only while
+/// `isActive`; otherwise it adds nothing.
+private struct BottomSafeAreaReader: ViewModifier {
+    let isActive: Bool
+    @Binding var value: CGFloat?
+
+    func body(content: Content) -> some View {
+        if isActive {
+            content.onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.safeAreaInsets.bottom
+            } action: { newValue in
+                value = newValue
+            }
+        } else {
+            content
+        }
     }
 }
 #endif

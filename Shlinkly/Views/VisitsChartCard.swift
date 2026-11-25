@@ -325,7 +325,7 @@ private enum VisitsChartCardPreviewData {
 #Preview("Over time, months 12 at a time") {
     VisitsChartCard(store: VisitsChartCardPreviewData.store())
         .padding(24)
-        .frame(maxWidth: 680)
+        .frame(maxWidth: LayoutMetrics.contentColumnWidth)
         .canvasBackground()
 }
 #endif

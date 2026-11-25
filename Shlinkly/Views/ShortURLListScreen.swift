@@ -532,7 +532,7 @@ struct ShortURLListScreen: View {
             .safeAreaInset(edge: .top, spacing: 0) { phoneNavBar }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if !isSelecting {
-                    BottomBar { newLinkButton }
+                    BottomBar(column: true) { newLinkButton }
                 }
             }
         #endif
@@ -795,6 +795,7 @@ struct ShortURLListScreen: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+        .padContentColumnMargins()
         .environment(\.defaultMinListRowHeight, 0)
         .scrollDismissesKeyboard(.interactively)
         .environment(\.editMode, editModeBinding)
@@ -1256,6 +1257,23 @@ private extension View {
         listRowInsets(EdgeInsets(top: top, leading: horizontal, bottom: 0, trailing: horizontal))
             .listRowBackground(Color.clear)
             .listRowSeparator(.hidden)
+    }
+
+    /// iPad: insets the page's content (rows, header rows, chips) to the
+    /// centered content column, while the `List` itself stays full width, so
+    /// it scrolls and pulls to refresh from anywhere on the screen. The width
+    /// is read in the same layout pass (`GeometryReader`), so nothing moves
+    /// once it appears. iPhone: unchanged.
+    @ViewBuilder
+    func padContentColumnMargins() -> some View {
+        if DeviceIdiom.isPad {
+            GeometryReader { proxy in
+                let gutter = max(0, (proxy.size.width - LayoutMetrics.contentColumnWidth) / 2)
+                self.contentMargins(.horizontal, gutter, for: .scrollContent)
+            }
+        } else {
+            self
+        }
     }
 }
 
