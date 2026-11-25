@@ -1,24 +1,26 @@
 # Shlinkly
 
-A native, open-source client for [Shlink](https://shlink.io) — the self-hosted
-URL shortener — for iPhone, iPad, and Mac.
+A native, open-source client for [Shlink](https://shlink.io), the self-hosted
+URL shortener, for iPhone, iPad, and Mac.
 
-<!-- App Store badge — add link at release -->
+[Download on the App Store](https://apps.apple.com/app/shlinkly/id6780160853) · [Download for Mac](https://github.com/notnvnton/shlinkly/releases/latest/download/Shlinkly.dmg)
 
 Shlinkly connects to your own Shlink server and lets you manage every short link,
 campaign, and click from one app that feels right at home on Apple platforms.
-Your API keys stay under your control — on-device or synced via iCloud Keychain,
+Your API keys stay under your control: on-device or synced via iCloud Keychain,
 end-to-end encrypted.
 
 ## Features
 
 - Browse all your short links with search, tags, and sorting
-- Create links in seconds — custom slugs, tags, UTM forwarding, expiry dates, visit limits
-- Per-link analytics: real-time visits, real people vs. bots, countries, and traffic sources
+- Create links in seconds: custom slugs, tags, UTM forwarding, expiry dates, visit limits
+- Readable analytics: visits per day, week or month, people and bots in one chart, countries, and traffic sources
+- QR codes for any link, made on your device as PNG or SVG
 - Shorten straight from the share sheet in any app
+- Find your links in Spotlight; widget, Shortcuts and Siri on iPhone and iPad
 - On Mac: generate a short link from your clipboard right in the menu bar
 - Connect multiple Shlink servers and switch between them
-- Keys stored on-device or synced via iCloud Keychain — never sent anywhere else
+- Keys stored on-device or synced via iCloud Keychain, never sent anywhere else
 
 ## Requirements
 
@@ -27,7 +29,8 @@ end-to-end encrypted.
 
 ## Download
 
-Coming to the App Store — link added at release.
+- iPhone and iPad: [App Store](https://apps.apple.com/app/shlinkly/id6780160853)
+- Mac: [Shlinkly.dmg](https://github.com/notnvnton/shlinkly/releases/latest/download/Shlinkly.dmg), notarized, with automatic updates
 
 ## Building from source
 
@@ -35,13 +38,13 @@ Coming to the App Store — link added at release.
 2. Select your own Apple Developer team under Signing & Capabilities.
 3. Build and run on iOS or macOS.
 
-Servers and API keys are stored in the Keychain at runtime — no config files needed.
+Servers and API keys are stored in the Keychain at runtime: no config files needed.
 
 ## Tech
 
 Native SwiftUI, multiplatform (iOS + macOS, not Mac Catalyst). State via
 `@Observable`; all models, the API client (`actor ShlinkClient`), and stores live
-in a UI-free `ShlinklyCore` module. Typed-route navigation — `NavigationStack` on
+in a UI-free `ShlinklyCore` module. Typed-route navigation: `NavigationStack` on
 iOS, a three-column `NavigationSplitView` on macOS.
 
 ## Contributing
