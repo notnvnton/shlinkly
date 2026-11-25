@@ -248,7 +248,7 @@ struct ShortURLFormView: View {
                         group("Long URL") {
                             LayoutCard {
                                 TextField("Long URL", text: $model.longURL,
-                                          prompt: Text("https://example.com/page").foregroundStyle(Palette.text2))
+                                          prompt: Text(verbatim: "https://example.com/page").foregroundStyle(Palette.text2))
                                     .focused($focusedField, equals: .longURL)
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
@@ -280,8 +280,8 @@ struct ShortURLFormView: View {
                         group("Tags") {
                             LayoutCard {
                                 TagsEditor(model: model, draft: $tagDraft, focused: $focusedField)
-                                    .padding(.horizontal, 12)
                                     .padding(.vertical, 10)
+                                    .layoutRow()
                             }
                             TagSuggestions(model: model, tagsStore: tagsStore, draft: $tagDraft)
                         }
@@ -570,7 +570,7 @@ private struct TagsEditor: View {
     private static let fieldMinWidth: CGFloat = 80
     #else
     private static let tagSize: TagView.Size = .large
-    private static let fieldSize: CGFloat = 15
+    private static let fieldSize: CGFloat = 16
     private static let fieldMinWidth: CGFloat = 90
     #endif
 }

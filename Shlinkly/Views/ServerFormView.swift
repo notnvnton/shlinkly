@@ -240,7 +240,7 @@ struct ServerFormView: View {
                                 RowSeparator()
                                 phoneField("URL") {
                                     TextField("Server URL", text: $model.urlText,
-                                              prompt: Text("https://shlink.example.com").foregroundStyle(Palette.text2))
+                                              prompt: Text(verbatim: "https://shlink.example.com").foregroundStyle(Palette.text2))
                                         .focused($focusedField, equals: .url)
                                         .textInputAutocapitalization(.never)
                                         .autocorrectionDisabled()
